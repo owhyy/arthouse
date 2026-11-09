@@ -1,0 +1,57 @@
+[project]
+name = "arthouse"
+version = "0.1.0"
+description = "Server-rendered web app: FastAPI + Jinja2 + HTMX + Alpine"
+readme = "README.md"
+authors = [
+    { name = "Ion Babin", email = "owhy4100@gmail.com" }
+]
+requires-python = ">=3.15"
+dependencies = [
+    "fastapi>=0.162.2",
+    "jinja2>=3.1.6",
+    "pydantic-settings>=2.16.2",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+arthouse = "arthouse.main:run"
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.40.2",
+    "djlint>=1.49.10",
+    "httpx>=0.28.1",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
+    "ruff>=0.17.4",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py315"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.basedpyright]
+include = ["src", "tests"]
+# basedpyright's strictest sensible default, made explicit.
+typeCheckingMode = "recommended"
+# `response.raise_for_status()` is an idiomatic fire-and-forget call.
+reportUnusedCallResult = false
+
+[tool.djlint]
+profile = "jinja"
+indent = 2
+preserve_blank_lines = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]

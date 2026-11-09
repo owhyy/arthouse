@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Environments
+.venv/
+.env
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Tailwind standalone CLI binary (downloaded, not committed)
+.bin/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Session working notes (not part of the app)
+.agent/
+AGENTS.md
+AGENTS.md

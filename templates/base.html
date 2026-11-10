@@ -6,8 +6,16 @@
     <title>{% block title %}{{ title or "arthouse" }}{% endblock %}</title>
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
   </head>
-  <body class="bg-paper font-sans text-ink antialiased">
-    <main class="mx-auto max-w-2xl px-5 pt-10 pb-16">
+  <body class="flex min-h-screen flex-col bg-paper font-sans text-ink antialiased">
+    <header class="border-b border-line">
+      <div class="mx-auto flex w-full max-w-2xl items-center justify-between px-5 py-3">
+        <a href="{{ url_for('index') }}" class="font-semibold tracking-tight">arthouse</a>
+        <nav class="flex items-center gap-4 text-sm">
+          <a href="{{ url_for('library') }}" class="text-muted hover:text-accent hover:underline">Library</a>
+        </nav>
+      </div>
+    </header>
+    <main class="mx-auto w-full max-w-2xl flex-1 px-5 pt-10 pb-16">
       {% block content %}{% endblock %}
     </main>
   </body>

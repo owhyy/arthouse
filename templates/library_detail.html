@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <p><a href="{{ url_for('library') }}" class="text-sm text-muted hover:text-accent hover:underline">← library</a></p>
+
+  <h1 class="mt-4 text-3xl font-bold tracking-tight">{{ item.title }}</h1>
+  <p class="mt-2 text-muted">
+    {% if item.creator %}{{ item.creator }}{% endif %}
+    {% if item.year %}{% if item.creator %} · {% endif %}{{ item.year }}{% endif %}
+  </p>
+
+  <dl class="mt-8 divide-y divide-line rounded border border-line">
+    <div class="flex items-baseline justify-between gap-3 px-4 py-3">
+      <dt class="text-sm text-muted">Platform</dt>
+      <dd class="text-sm font-medium">{{ item.source }}</dd>
+    </div>
+    <div class="flex items-baseline justify-between gap-3 px-4 py-3">
+      <dt class="text-sm text-muted">{{ item.source }} rating</dt>
+      <dd class="text-sm font-medium">{{ item.rating_native }}</dd>
+    </div>
+    <div class="flex items-baseline justify-between gap-3 px-4 py-3">
+      <dt class="text-sm text-muted">arthouse score</dt>
+      <dd class="text-sm font-medium text-accent">{{ item.score }}/10</dd>
+    </div>
+    <div class="flex items-baseline justify-between gap-3 px-4 py-3">
+      <dt class="text-sm text-muted">Rated on</dt>
+      <dd class="text-sm font-medium">{{ item.rated_on or "—" }}</dd>
+    </div>
+  </dl>
+{% endblock %}

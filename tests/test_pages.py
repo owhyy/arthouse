@@ -1,11 +1,12 @@
 import httpx
 
 
-async def test_index_renders_full_page(client: httpx.AsyncClient) -> None:
+async def test_index_renders_blank_page_with_navbar(client: httpx.AsyncClient) -> None:
     response = await client.get("/")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
-    assert "Hello, world!" in response.text
+    assert "<nav" in response.text
+    assert "/library" in response.text  # url_for emits absolute URLs
     assert "<script" not in response.text.lower()
 
 

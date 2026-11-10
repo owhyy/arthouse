@@ -13,16 +13,18 @@
       </h2>
       <ul class="mt-2 divide-y divide-line">
         {% for item in group["items"] %}
-          <li class="flex items-baseline justify-between gap-3 py-2">
-            <div class="min-w-0">
-              <span class="font-medium">{{ item.title }}</span>
-              {% if item.creator %}<span class="text-muted"> — {{ item.creator }}</span>{% endif %}
-              {% if item.year %}<span class="text-sm text-muted"> ({{ item.year }})</span>{% endif %}
-            </div>
-            <div class="flex shrink-0 items-center gap-2 text-sm">
-              <span class="rounded border border-line px-1.5 py-0.5 text-xs uppercase tracking-wide text-muted">{{ item.source }}</span>
-              <span class="font-medium text-accent">{{ item.rating_native }}</span>
-            </div>
+          <li>
+            <a href="{{ url_for('library_detail', item_id=item.id) }}" class="flex items-baseline justify-between gap-3 py-2 hover:bg-paper/60">
+              <div class="min-w-0">
+                <span class="font-medium">{{ item.title }}</span>
+                {% if item.creator %}<span class="text-muted"> — {{ item.creator }}</span>{% endif %}
+                {% if item.year %}<span class="text-sm text-muted"> ({{ item.year }})</span>{% endif %}
+              </div>
+              <div class="flex shrink-0 items-center gap-2 text-sm">
+                <span class="rounded border border-line px-1.5 py-0.5 text-xs uppercase tracking-wide text-muted">{{ item.source }}</span>
+                <span class="font-medium text-accent">{{ item.score }}/10</span>
+              </div>
+            </a>
           </li>
         {% endfor %}
       </ul>

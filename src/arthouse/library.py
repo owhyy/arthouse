@@ -13,6 +13,7 @@ MEDIA_LABELS = {"music": "Music", "film": "Films", "book": "Books"}
 
 
 class LibraryItem(BaseModel):
+    id: int | None = None  # SQLite rowid, populated on query
     media_type: str  # music | film | book
     source: str  # letterboxd | rateyourmusic | goodreads
     source_id: str
@@ -22,6 +23,20 @@ class LibraryItem(BaseModel):
     rating: float  # normalized to 0-5
     rating_native: str
     rated_on: date | None
+
+    @property
+    def score(self) -> str:
+        return score_str(self.rating)
+
+
+def score_str(rating: float) -> str:
+    """Display a 0-5 rating as a 0-10 score.
+
+    x2 maps all three platforms losslessly: RYM 1-10 stays integer,
+    Letterboxd half-stars become integers, Goodreads quarter steps become
+    halves — so one decimal is always exact and never false precision.
+    """
+    return f"{rating * 2:g}"
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
@@ -137,12 +152,15 @@ def build_db(db_path: Path, data_dir: Path) -> int:
     conn.execute("DROP TABLE IF EXISTS items")
     conn.execute(
         """CREATE TABLE items (
+               id INTEGER PRIMARY KEY,
                media_type TEXT, source TEXT, source_id TEXT, title TEXT,
                creator TEXT, year INTEGER, rating REAL, rating_native TEXT,
                rated_on TEXT)"""
     )
     conn.executemany(
-        "INSERT INTO items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        """INSERT INTO items (media_type, source, source_id, title, creator,
+                              year, rating, rating_native, rated_on)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         [
             (
                 i.media_type,
@@ -163,6 +181,11 @@ def build_db(db_path: Path, data_dir: Path) -> int:
     return len(items)
 
 
+def _item_from_row(r: sqlite3.Row) -> LibraryItem:
+    # Row fields are typed Any; model_validate coerces and checks each column.
+    return LibraryItem.model_validate(dict(r))
+
+
 def query_items(db_path: Path, media_type: str | None = None) -> list[LibraryItem]:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -170,12 +193,24 @@ def query_items(db_path: Path, media_type: str | None = None) -> list[LibraryIte
     rows = cast(
         "list[sqlite3.Row]",
         conn.execute(
-            """SELECT * FROM items
+            """SELECT id, media_type, source, source_id, title, creator, year,
+                      rating, rating_native, rated_on
+               FROM items
                WHERE (? IS NULL OR media_type = ?)
                ORDER BY rating DESC, title COLLATE NOCASE""",
             (media_type, media_type),
         ).fetchall(),
     )
     conn.close()
-    # Rows map to columns; model_validate coerces/coerces-and-checks each field.
-    return [LibraryItem.model_validate(dict(r)) for r in rows]
+    return [_item_from_row(r) for r in rows]
+
+
+def query_item(db_path: Path, item_id: int) -> LibraryItem | None:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    row = cast(
+        "sqlite3.Row | None",
+        conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone(),
+    )
+    conn.close()
+    return _item_from_row(row) if row is not None else None

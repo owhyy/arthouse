@@ -1,9 +1,9 @@
 """Page routes."""
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from arthouse.deps import DbPath, templates
-from arthouse.library import MEDIA_LABELS, MEDIA_ORDER, query_items
+from arthouse.library import MEDIA_LABELS, MEDIA_ORDER, query_item, query_items
 
 router = APIRouter()
 
@@ -11,6 +11,16 @@ router = APIRouter()
 @router.get("/")
 async def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {"title": "arthouse"})
+
+
+@router.get("/library/{item_id}")
+async def library_detail(request: Request, item_id: int, db_path: DbPath):
+    item = query_item(db_path, item_id)
+    if item is None or item.id is None:
+        raise HTTPException(status_code=404)
+    return templates.TemplateResponse(
+        request, "library_detail.html", {"title": item.title, "item": item}
+    )
 
 
 @router.get("/library")

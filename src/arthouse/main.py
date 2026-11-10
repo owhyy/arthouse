@@ -26,7 +26,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     static_dir = BASE_DIR / "static"
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-    data_dir = BASE_DIR / "data"
+    data_dir = settings.data_dir
+    data_dir.mkdir(parents=True, exist_ok=True)
     app.state.engine = create_engine(f"sqlite:///{data_dir / 'library.db'}")
     build_db(app.state.engine, data_dir)
 

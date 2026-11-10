@@ -16,6 +16,8 @@ class Settings(BaseSettings):
 
     debug: bool = False
 
+    data_dir: Path = BASE_DIR / "data"
+
     # Server
     host: str = "127.0.0.1"
     port: int = 8000

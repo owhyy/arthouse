@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from arthouse.assets import asset_url, build_asset_map
 from arthouse.config import BASE_DIR, Settings, get_settings
 from arthouse.deps import templates
+from arthouse.library import build_db
 from arthouse.routes import pages
 
 
@@ -23,6 +24,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     static_dir = BASE_DIR / "static"
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    data_dir = BASE_DIR / "data"
+    app.state.db_path = data_dir / "library.db"
+    build_db(app.state.db_path, data_dir)
+
     templates.env.globals["asset"] = partial(  # pyright: ignore[reportArgumentType]
         asset_url, static_dir, build_asset_map(static_dir), debug=settings.debug
     )

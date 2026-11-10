@@ -1,0 +1,4 @@
+Book Id,Title,Author,Author l-f,Additional Authors,ISBN,ISBN13,My Rating,Publisher,Binding,Number of Pages,Year Published,Original Publication Year,Date Read,Date Added,Bookshelves,Bookshelves with positions,Exclusive Shelf,My Review,Spoiler,Private Notes,Read Count,Owned Copies
+101,Fixture Book A,Fixture Author,"Author, Fixture",,,,4.0,,,,2001,2001,2026/01/02,2026/01/01,,,read,,,,1,0
+102,Fixture Book B,Fixture Author Two,"Author Two, Fixture",,,,0.0,,,,1999,1999,,2026/01/01,,,read,,,,0,0
+103,Fixture Book C,Fixture Author Three,"Author Three, Fixture",,,,4.5,,,,1988,1988,,2026/01/01,,,to-read,,,,0,0

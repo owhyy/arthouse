@@ -1,19 +1,23 @@
 """Shared dependencies."""
 
-from pathlib import Path
+from collections.abc import Iterator
 from typing import Annotated
 
 from fastapi import Depends, Request
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import Engine
+from sqlalchemy.orm import Session
 
 from arthouse.config import BASE_DIR
 
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
-def get_db_path(request: Request) -> Path:
+def get_db(request: Request) -> Iterator[Session]:
     # Starlette types app/state dynamically, so basedpyright sees Any here.
-    return request.app.state.db_path  # pyright: ignore[reportAny]
+    engine: Engine = request.app.state.engine  # pyright: ignore[reportAny]
+    with Session(engine) as session:
+        yield session
 
 
-DbPath = Annotated[Path, Depends(get_db_path)]
+DbSession = Annotated[Session, Depends(get_db)]

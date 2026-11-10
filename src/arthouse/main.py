@@ -5,6 +5,7 @@ from functools import partial
 
 from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import create_engine
 
 from arthouse.assets import asset_url, build_asset_map
 from arthouse.config import BASE_DIR, Settings, get_settings
@@ -26,8 +27,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     data_dir = BASE_DIR / "data"
-    app.state.db_path = data_dir / "library.db"
-    build_db(app.state.db_path, data_dir)
+    app.state.engine = create_engine(f"sqlite:///{data_dir / 'library.db'}")
+    build_db(app.state.engine, data_dir)
 
     templates.env.globals["asset"] = partial(  # pyright: ignore[reportArgumentType]
         asset_url, static_dir, build_asset_map(static_dir), debug=settings.debug

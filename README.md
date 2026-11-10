@@ -32,9 +32,10 @@ goodreads/goodreads_library_export.csv                  # desktop-site export
 ```
 
 At startup the app parses all CSVs it finds and (re)builds `data/library.db`
-(SQLite). Ratings are normalized to a 0–5 scale internally (RYM 1–10 ÷ 2),
-displayed as 0–10 scores; unrated items (RYM rating 0 / wantlist, Goodreads
-unrated or to-read) are skipped. Re-export and restart to refresh.
+(SQLite via SQLAlchemy). Ratings are normalized to a 0–5 scale internally
+(RYM 1–10 ÷ 2), displayed as 0–10 scores; unrated items (RYM rating 0 /
+wantlist, Goodreads unrated or to-read) are skipped. Re-export and restart to
+refresh.
 
 ## Setup
 
@@ -79,9 +80,9 @@ uv run pytest
 src/arthouse/
 main.py          # app factory: builds library.db, asset map, server entry point
 config.py        # pydantic-settings; paths anchored to the project root
-deps.py          # Jinja2Templates singleton, DB-path dependency
+deps.py          # Jinja2Templates singleton, SQLAlchemy session dependency
 assets.py        # content-hashed asset URLs (`asset()` template global)
-library.py       # platform CSV parsers, SQLite build/queries
+library.py       # ORM model, platform CSV parsers, SQLite build/queries
 routes/pages.py  # HTML routes only
 templates/         # Jinja2: base.html (navbar), index.html, library.html, library_detail.html
 static/            # css/app.src.css (Tailwind input) → css/app.css (committed build)

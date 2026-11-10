@@ -1,32 +1,22 @@
 """Unified library from platform exports: parse CSVs, store in SQLite."""
 
+# SQLAlchemy declarative columns are initialized by the ORM's instrumentation,
+# which pyright cannot see — the rule is false-positives on this module only.
+# pyright: reportUninitializedInstanceVariable=false
+
 import csv
-import sqlite3
 from datetime import date
 from pathlib import Path
-from typing import cast
 
-from pydantic import BaseModel
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 MEDIA_ORDER = ("music", "film", "book")
 MEDIA_LABELS = {"music": "Music", "film": "Films", "book": "Books"}
 
 
-class LibraryItem(BaseModel):
-    id: int | None = None  # SQLite rowid, populated on query
-    media_type: str  # music | film | book
-    source: str  # letterboxd | rateyourmusic | goodreads
-    source_id: str
-    title: str
-    creator: str
-    year: int | None
-    rating: float  # normalized to 0-5
-    rating_native: str
-    rated_on: date | None
-
-    @property
-    def score(self) -> str:
-        return score_str(self.rating)
+class Base(DeclarativeBase):
+    pass
 
 
 def score_str(rating: float) -> str:
@@ -37,6 +27,27 @@ def score_str(rating: float) -> str:
     halves — so one decimal is always exact and never false precision.
     """
     return f"{rating * 2:g}"
+
+
+class Item(Base):
+    """One rated item from any platform."""
+
+    __tablename__: str = "items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    media_type: Mapped[str]  # music | film | book
+    source: Mapped[str]  # letterboxd | rateyourmusic | goodreads
+    source_id: Mapped[str]
+    title: Mapped[str]
+    creator: Mapped[str]
+    year: Mapped[int | None]
+    rating: Mapped[float]  # normalized to 0-5
+    rating_native: Mapped[str]
+    rated_on: Mapped[date | None]
+
+    @property
+    def score(self) -> str:
+        return score_str(self.rating)
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
@@ -50,14 +61,14 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
         ]
 
 
-def _parse_letterboxd(path: Path) -> list[LibraryItem]:
-    items: list[LibraryItem] = []
+def _parse_letterboxd(path: Path) -> list[Item]:
+    items: list[Item] = []
     for row in _read_csv(path):
         rating = (row.get("Rating") or "").strip()
         if not rating:
             continue
         items.append(
-            LibraryItem(
+            Item(
                 media_type="film",
                 source="letterboxd",
                 source_id=row["Letterboxd URI"],
@@ -72,8 +83,8 @@ def _parse_letterboxd(path: Path) -> list[LibraryItem]:
     return items
 
 
-def _parse_rym(path: Path) -> list[LibraryItem]:
-    items: list[LibraryItem] = []
+def _parse_rym(path: Path) -> list[Item]:
+    items: list[Item] = []
     for row in _read_csv(path):
         rating = (row.get("Rating") or "").strip()
         if rating in ("", "0"):
@@ -84,7 +95,7 @@ def _parse_rym(path: Path) -> list[LibraryItem]:
         creator = f"{first} {last}" if first and last else (last or first)
         release_year = row["Release_Date"].strip()[:4]
         items.append(
-            LibraryItem(
+            Item(
                 media_type="music",
                 source="rateyourmusic",
                 source_id=row["RYM Album"],
@@ -99,8 +110,8 @@ def _parse_rym(path: Path) -> list[LibraryItem]:
     return items
 
 
-def _parse_goodreads(path: Path) -> list[LibraryItem]:
-    items: list[LibraryItem] = []
+def _parse_goodreads(path: Path) -> list[Item]:
+    items: list[Item] = []
     for row in _read_csv(path):
         rating = (row.get("My Rating") or "").strip()
         if not rating or float(rating) == 0:
@@ -113,7 +124,7 @@ def _parse_goodreads(path: Path) -> list[LibraryItem]:
         rated_on = read or added
         year = row["Original Publication Year"].strip() or row["Year Published"].strip()
         items.append(
-            LibraryItem(
+            Item(
                 media_type="book",
                 source="goodreads",
                 source_id=row["Book Id"],
@@ -128,8 +139,8 @@ def _parse_goodreads(path: Path) -> list[LibraryItem]:
     return items
 
 
-def build_db(db_path: Path, data_dir: Path) -> int:
-    """(Re)build the items table from data_dir exports; returns item count.
+def build_db(engine: Engine, data_dir: Path) -> int:
+    """(Re)build the schema and items from data_dir exports; returns item count.
 
     Missing export files are skipped, so an empty data dir yields an empty
     library (CI has no data/).
@@ -139,7 +150,7 @@ def build_db(db_path: Path, data_dir: Path) -> int:
         "rateyourmusic": _parse_rym,
         "goodreads/goodreads_library_export.csv": _parse_goodreads,
     }
-    items: list[LibraryItem] = []
+    items: list[Item] = []
     for name, parse in parsers.items():
         # The RYM export filename contains the username; match on directory.
         paths = [data_dir / name] if "/" in name else sorted(data_dir.glob(f"{name}/*.csv"))
@@ -147,70 +158,20 @@ def build_db(db_path: Path, data_dir: Path) -> int:
             if path.is_file():
                 items.extend(parse(path))
 
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.execute("DROP TABLE IF EXISTS items")
-    conn.execute(
-        """CREATE TABLE items (
-               id INTEGER PRIMARY KEY,
-               media_type TEXT, source TEXT, source_id TEXT, title TEXT,
-               creator TEXT, year INTEGER, rating REAL, rating_native TEXT,
-               rated_on TEXT)"""
-    )
-    conn.executemany(
-        """INSERT INTO items (media_type, source, source_id, title, creator,
-                              year, rating, rating_native, rated_on)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        [
-            (
-                i.media_type,
-                i.source,
-                i.source_id,
-                i.title,
-                i.creator,
-                i.year,
-                i.rating,
-                i.rating_native,
-                i.rated_on.isoformat() if i.rated_on else None,
-            )
-            for i in items
-        ],
-    )
-    conn.commit()
-    conn.close()
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add_all(items)
+        session.commit()
     return len(items)
 
 
-def _item_from_row(r: sqlite3.Row) -> LibraryItem:
-    # Row fields are typed Any; model_validate coerces and checks each column.
-    return LibraryItem.model_validate(dict(r))
+def query_items(db: Session, media_type: str | None = None) -> list[Item]:
+    stmt = select(Item).order_by(Item.rating.desc(), Item.title.collate("nocase"))
+    if media_type is not None:
+        stmt = stmt.where(Item.media_type == media_type)
+    return list(db.scalars(stmt))
 
 
-def query_items(db_path: Path, media_type: str | None = None) -> list[LibraryItem]:
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    # Cursor.fetchall is typed list[Any]; the schema above guarantees Rows.
-    rows = cast(
-        "list[sqlite3.Row]",
-        conn.execute(
-            """SELECT id, media_type, source, source_id, title, creator, year,
-                      rating, rating_native, rated_on
-               FROM items
-               WHERE (? IS NULL OR media_type = ?)
-               ORDER BY rating DESC, title COLLATE NOCASE""",
-            (media_type, media_type),
-        ).fetchall(),
-    )
-    conn.close()
-    return [_item_from_row(r) for r in rows]
-
-
-def query_item(db_path: Path, item_id: int) -> LibraryItem | None:
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    row = cast(
-        "sqlite3.Row | None",
-        conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone(),
-    )
-    conn.close()
-    return _item_from_row(row) if row is not None else None
+def query_item(db: Session, item_id: int) -> Item | None:
+    return db.get(Item, item_id)

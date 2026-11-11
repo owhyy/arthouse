@@ -6,8 +6,32 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
 
 from arthouse.deps import get_db
-from arthouse.library import build_db, query_item, query_items
+from arthouse.library import (
+    FilmGenre,
+    FilmMeta,
+    build_db,
+    query_item,
+    query_items,
+)
 from arthouse.main import app
+
+
+def _enrich_film(engine: Engine, source_id: str, overview: str, genres: list[str]) -> None:
+    with Session(engine) as db:
+        db.add(
+            FilmMeta(
+                source="letterboxd",
+                source_id=source_id,
+                tmdb_id=1,
+                overview=overview,
+                poster_path=None,
+                matched_title="Fixture Film A",
+                matched_year=1999,
+            )
+        )
+        for tag in genres:
+            db.add(FilmGenre(source="letterboxd", source_id=source_id, tag=tag))
+        db.commit()
 
 
 def _override_db(engine: Engine) -> None:
@@ -90,6 +114,51 @@ async def test_detail_page_shows_review(client: httpx.AsyncClient, library_db: E
     assert "A fixture review." in response.text
     assert "Second line." in response.text
     assert "<b>fixture</b>" not in response.text  # cleaned, not raw HTML
+
+
+async def test_detail_page_shows_synopsis_and_genres(
+    client: httpx.AsyncClient, library_db: Engine
+) -> None:
+    _enrich_film(library_db, "https://boxd.it/aaa", "A fixture synopsis.", ["Drama", "Fantasy"])
+    with Session(library_db) as db:
+        film = next(i for i in query_items(db) if i.title == "Fixture Film A")
+    _override_db(library_db)
+    try:
+        response = await client.get(f"/library/{film.id}")
+    finally:
+        _clear_override()
+    assert response.status_code == 200
+    assert "Synopsis" in response.text
+    assert "A fixture synopsis." in response.text
+    assert "Synopsis via TMDB" in response.text
+    assert "Drama" in response.text
+    assert "Fantasy" in response.text
+
+
+async def test_detail_page_omits_synopsis_when_unenriched(
+    client: httpx.AsyncClient, library_db: Engine
+) -> None:
+    with Session(library_db) as db:
+        film = next(i for i in query_items(db) if i.title == "Fixture Film B")
+    _override_db(library_db)
+    try:
+        response = await client.get(f"/library/{film.id}")
+    finally:
+        _clear_override()
+    assert response.status_code == 200
+    assert "Synopsis" not in response.text
+
+
+async def test_film_grid_shows_genre_tags(client: httpx.AsyncClient, library_db: Engine) -> None:
+    _enrich_film(library_db, "https://boxd.it/aaa", "A fixture synopsis.", ["Drama"])
+    _override_db(library_db)
+    try:
+        response = await client.get("/library?tab=film")
+    finally:
+        _clear_override()
+    assert response.status_code == 200
+    assert "Drama" in response.text
+    assert "A fixture synopsis." not in response.text  # synopsis is detail-only
 
 
 async def test_detail_page_omits_empty_review(

@@ -9,6 +9,22 @@
     {% if item.year %}{% if item.creator %} · {% endif %}{{ item.year }}{% endif %}
   </p>
 
+  {% if genres %}
+    <ul class="mt-4 flex flex-wrap gap-2">
+      {% for genre in genres %}
+        <li class="rounded-full border border-line px-3 py-1 text-xs text-muted">{{ genre }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if film_meta and film_meta.overview %}
+    <section class="mt-8">
+      <h2 class="text-sm font-semibold tracking-wide text-muted uppercase">Synopsis</h2>
+      <p class="mt-2 leading-relaxed">{{ film_meta.overview }}</p>
+      <p class="mt-2 text-xs text-muted">Synopsis via TMDB</p>
+    </section>
+  {% endif %}
+
   <dl class="mt-8 divide-y divide-line rounded border border-line">
     <div class="flex items-baseline justify-between gap-3 px-4 py-3">
       <dt class="text-sm text-muted">Platform</dt>

@@ -255,3 +255,27 @@ def query_items(db: Session, media_type: str | None = None) -> list[Item]:
 
 def query_item(db: Session, item_id: int) -> Item | None:
     return db.get(Item, item_id)
+
+
+def query_film_meta(db: Session, source: str, source_id: str) -> tuple[FilmMeta, list[str]] | None:
+    """TMDB metadata and genre tags for one film, or None when unenriched."""
+    meta = db.get(FilmMeta, (source, source_id))
+    if meta is None:
+        return None
+    genres = list(
+        db.scalars(
+            select(FilmGenre.tag)
+            .where(FilmGenre.source == source, FilmGenre.source_id == source_id)
+            .order_by(FilmGenre.tag)
+        )
+    )
+    return meta, genres
+
+
+def query_film_genres(db: Session) -> dict[str, list[str]]:
+    """All film genres keyed by platform id — one query for the whole grid."""
+    genres: dict[str, list[str]] = {}
+    rows = db.execute(select(FilmGenre.source_id, FilmGenre.tag).order_by(FilmGenre.tag))
+    for source_id, tag in rows:
+        genres.setdefault(source_id, []).append(tag)
+    return genres

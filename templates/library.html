@@ -35,6 +35,16 @@
                 {% if item.creator %}{{ item.creator }}{% endif %}
                 {% if item.year %}{% if item.creator %} · {% endif %}{{ item.year }}{% endif %}
               </p>
+              {% if film_genres %}
+                {% set tags = film_genres.get(item.source_id, []) %}
+                {% if tags %}
+                  <ul class="mt-2 flex flex-wrap gap-1">
+                    {% for tag in tags %}
+                      <li class="rounded-full border border-line px-2 py-0.5 text-xs text-muted">{{ tag }}</li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+              {% endif %}
               <span class="mt-3 inline-block rounded border border-line px-1.5 py-0.5 text-xs uppercase tracking-wide text-muted">{{ item.source }}</span>
             </a>
           </li>

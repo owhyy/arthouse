@@ -3,7 +3,15 @@
 from fastapi import APIRouter, HTTPException, Request
 
 from arthouse.deps import DbSession, templates
-from arthouse.library import MEDIA_LABELS, MEDIA_ORDER, query_item, query_items
+from arthouse.library import (
+    MEDIA_LABELS,
+    MEDIA_ORDER,
+    FilmMeta,
+    query_film_genres,
+    query_film_meta,
+    query_item,
+    query_items,
+)
 
 router = APIRouter()
 
@@ -18,8 +26,16 @@ async def library_detail(request: Request, item_id: int, db: DbSession):
     item = query_item(db, item_id)
     if item is None:
         raise HTTPException(status_code=404)
+    film_meta: FilmMeta | None = None
+    genres: list[str] = []
+    if item.media_type == "film":
+        enriched = query_film_meta(db, item.source, item.source_id)
+        if enriched is not None:
+            film_meta, genres = enriched
     return templates.TemplateResponse(
-        request, "library_detail.html", {"title": item.title, "item": item}
+        request,
+        "library_detail.html",
+        {"title": item.title, "item": item, "film_meta": film_meta, "genres": genres},
     )
 
 
@@ -45,6 +61,7 @@ async def library(request: Request, db: DbSession, tab: str = "music"):
             "title": f"Library · {MEDIA_LABELS[tab]}",
             "tabs": tabs,
             "items": [i for i in items if i.media_type == tab],
+            "film_genres": query_film_genres(db) if tab == "film" else {},
             "total": len(items),
         },
     )

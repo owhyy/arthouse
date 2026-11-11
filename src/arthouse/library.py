@@ -85,6 +85,9 @@ class FilmMeta(Base):
     poster_path: Mapped[str | None]
     # None means "not fetched yet"; "" means TMDB lists no director.
     director: Mapped[str | None] = mapped_column(default=None)
+    # False means "keywords not fetched yet" — an empty keyword set is a
+    # valid result and must not be refetched on every run.
+    keywords_fetched: Mapped[bool] = mapped_column(default=False)
     matched_title: Mapped[str]
     matched_year: Mapped[int | None]
     enriched_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
@@ -98,6 +101,16 @@ class FilmGenre(Base):
     source: Mapped[str] = mapped_column(primary_key=True)
     source_id: Mapped[str] = mapped_column(primary_key=True)
     tag: Mapped[str] = mapped_column(primary_key=True)
+
+
+class FilmKeyword(Base):
+    """One TMDB keyword per enriched film (community-curated descriptors)."""
+
+    __tablename__: str = "film_keyword"
+
+    source: Mapped[str] = mapped_column(primary_key=True)
+    source_id: Mapped[str] = mapped_column(primary_key=True)
+    keyword: Mapped[str] = mapped_column(primary_key=True)
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
@@ -222,6 +235,11 @@ def _add_missing_columns(engine: Engine) -> None:
     if "director" not in columns:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE film_meta ADD COLUMN director VARCHAR"))
+    if "keywords_fetched" not in columns:
+        with engine.begin() as conn:
+            conn.execute(
+                text("ALTER TABLE film_meta ADD COLUMN keywords_fetched BOOLEAN NOT NULL DEFAULT 0")
+            )
 
 
 def build_db(engine: Engine, data_dir: Path) -> int:
@@ -250,7 +268,7 @@ def build_db(engine: Engine, data_dir: Path) -> int:
             item.review = reviews.get((normalize_title(item.title), item.year))
 
     # Only the export-derived items table is rebuilt; enrichment tables
-    # (film_meta, film_genre) persist across restarts.
+    # (film_meta, film_genre, film_keyword) persist across restarts.
     Base.metadata.tables["items"].drop(engine, checkfirst=True)
     _add_missing_columns(engine)
     Base.metadata.create_all(engine)

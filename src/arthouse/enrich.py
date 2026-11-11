@@ -13,11 +13,11 @@ from types import TracebackType
 from typing import NotRequired, Protocol, TypedDict, cast
 
 import httpx
-from sqlalchemy import Engine, create_engine, select
+from sqlalchemy import Engine, create_engine, func, select
 from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
-from arthouse.library import FilmGenre, FilmMeta, Item, normalize_title
+from arthouse.library import FilmGenre, FilmKeyword, FilmMeta, Item, normalize_title
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 YEAR_TOLERANCE = 1  # Letterboxd/library years can differ from TMDB's primary release
@@ -56,6 +56,15 @@ class TmdbCrewMember(TypedDict):
 
 class TmdbCreditsResponse(TypedDict, total=False):
     crew: list[TmdbCrewMember]
+
+
+class TmdbKeyword(TypedDict):
+    id: int
+    name: str
+
+
+class TmdbKeywordsResponse(TypedDict, total=False):
+    keywords: list[TmdbKeyword]
 
 
 def _titles(movie: TmdbMovie) -> tuple[str, ...]:
@@ -113,6 +122,8 @@ class TmdbLike(Protocol):
     def genre_map(self) -> dict[int, str]: ...
 
     def directors(self, tmdb_id: int) -> str: ...
+
+    def keywords(self, tmdb_id: int) -> list[str]: ...
 
 
 class TmdbClient:
@@ -178,12 +189,21 @@ class TmdbClient:
         names = [m["name"] for m in payload.get("crew", []) if m.get("job") == "Director"]
         return ", ".join(names)
 
+    def keywords(self, tmdb_id: int) -> list[str]:
+        """Community-curated keyword names; [] when TMDB lists none."""
+        payload = cast(TmdbKeywordsResponse, self._get(f"/movie/{tmdb_id}/keywords"))
+        # TMDB occasionally ships trailing spaces; they would split a keyword
+        # into two rows and break the shared vocabulary.
+        names = (k["name"].strip() for k in payload.get("keywords", []))
+        return [name for name in names if name]
+
 
 @dataclass
 class EnrichStats:
     matched: int = 0
     skipped: int = 0
     backfilled: int = 0
+    keywords: int = 0
     unmatched: list[str] = field(default_factory=list)
 
 
@@ -216,6 +236,18 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
                 db.commit()
                 stats.backfilled += 1
 
+        # Keywords arrived after the initial batch too. `keywords_fetched`
+        # records the attempt, so a film TMDB has no keywords for is not
+        # refetched on every run.
+        for meta in done.values():
+            if meta.keywords_fetched:
+                continue
+            for name in dict.fromkeys(client.keywords(meta.tmdb_id)):
+                db.add(FilmKeyword(source=meta.source, source_id=meta.source_id, keyword=name))
+            meta.keywords_fetched = True
+            db.commit()
+            stats.keywords += 1
+
         for film in pending:
             match = find_film(client, film.title, film.year)
             if match is None:
@@ -230,6 +262,7 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
                     overview=match.get("overview", ""),
                     poster_path=match.get("poster_path"),
                     director=client.directors(match["id"]),
+                    keywords_fetched=True,
                     matched_title=match.get("title", ""),
                     matched_year=int(release[:4]) if release[:4].isdigit() else None,
                 )
@@ -237,25 +270,87 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
             for genre_id in match.get("genre_ids", []):
                 if name := genre_names.get(genre_id):
                     db.add(FilmGenre(source=film.source, source_id=film.source_id, tag=name))
+            for keyword in dict.fromkeys(client.keywords(match["id"])):
+                db.add(FilmKeyword(source=film.source, source_id=film.source_id, keyword=keyword))
             db.commit()
             stats.matched += 1
     return stats
 
 
+@dataclass
+class KeywordReport:
+    """Coverage of TMDB keywords across the enriched films."""
+
+    films: int
+    fetched: int
+    empty: int
+    rows: int
+    distinct: int
+    top: list[tuple[str, int]]
+
+
+def keyword_report(engine: Engine, top: int = 25) -> KeywordReport:
+    """Count keyword coverage and the most common descriptors."""
+    with Session(engine) as db:
+        films = db.scalar(select(func.count()).select_from(FilmMeta)) or 0
+        fetched = (
+            db.scalar(select(func.count()).select_from(FilmMeta).where(FilmMeta.keywords_fetched))
+            or 0
+        )
+        rows = db.scalar(select(func.count()).select_from(FilmKeyword)) or 0
+        distinct = db.scalar(select(func.count(func.distinct(FilmKeyword.keyword)))) or 0
+        with_keywords = (
+            db.scalar(
+                select(func.count()).select_from(
+                    select(FilmKeyword.source, FilmKeyword.source_id).distinct().subquery()
+                )
+            )
+            or 0
+        )
+        top_rows = db.execute(
+            select(FilmKeyword.keyword, func.count())
+            .group_by(FilmKeyword.keyword)
+            .order_by(func.count().desc(), FilmKeyword.keyword)
+            .limit(top)
+        ).all()
+    return KeywordReport(
+        films=films,
+        fetched=fetched,
+        empty=fetched - with_keywords,
+        rows=rows,
+        distinct=distinct,
+        top=[(name, count) for name, count in top_rows],
+    )
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Enrich films with TMDB description and genres.")
+    parser = argparse.ArgumentParser(
+        description="Enrich films with TMDB description, genres, director, and keywords."
+    )
     parser.add_argument("--limit", type=int, default=None, help="process at most N films")
+    parser.add_argument("--report", action="store_true", help="print keyword coverage and exit")
     args = parser.parse_args()
 
     settings = get_settings()
+    engine = create_engine(f"sqlite:///{settings.data_dir / 'library.db'}")
+    if cast(bool, args.report):
+        report = keyword_report(engine)
+        print(
+            f"keywords: {report.fetched}/{report.films} films fetched, "
+            + f"{report.empty} without keywords, {report.rows} rows, "
+            + f"{report.distinct} distinct"
+        )
+        print("top: " + ", ".join(f"{name} ({count})" for name, count in report.top))
+        return
+
     if not settings.tmdb_api_key:
         raise SystemExit("ARTHOUSE_TMDB_API_KEY is not set (see README)")
-    engine = create_engine(f"sqlite:///{settings.data_dir / 'library.db'}")
     with TmdbClient(settings.tmdb_api_key) as client:
         stats = enrich_films(engine, client, limit=cast(int | None, args.limit))
     print(
         f"matched: {stats.matched}, skipped: {stats.skipped}, "
-        + f"directors backfilled: {stats.backfilled}, unmatched: {len(stats.unmatched)}"
+        + f"directors backfilled: {stats.backfilled}, "
+        + f"keywords fetched: {stats.keywords}, unmatched: {len(stats.unmatched)}"
     )
     for line in stats.unmatched:
         print(f"  unmatched: {line}")

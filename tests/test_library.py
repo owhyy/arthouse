@@ -251,6 +251,7 @@ def test_build_db_migrates_film_meta_without_director(tmp_path: Path) -> None:
         meta = db.get(FilmMeta, ("letterboxd", "https://boxd.it/old"))
     assert meta is not None
     assert meta.director is None  # column added, backfill happens on enrich
+    assert meta.keywords_fetched is False  # same for keywords
 
 
 def test_build_db_tolerates_missing_data_dir(tmp_path: Path) -> None:

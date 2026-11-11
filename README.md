@@ -47,23 +47,26 @@ refresh.
 
 ### Film enrichment (TMDB)
 
-Films are enriched with TMDB metadata — synopsis, poster path, genres, and
-director — so they can feed the recommender. Set `ARTHOUSE_TMDB_API_KEY` (v3 key or v4 read
-token), then run the enrichment once:
+Films are enriched with TMDB metadata — synopsis, poster path, genres,
+director, and keywords — so they can feed the recommender. Set
+`ARTHOUSE_TMDB_API_KEY` (v3 key or v4 read token), then run the enrichment
+once:
 
 ```bash
 uv run python -m arthouse.enrich            # all not-yet-enriched films
 uv run python -m arthouse.enrich --limit 5  # small batch
+uv run python -m arthouse.enrich --report   # keyword coverage + top terms
 ```
 
 Matching is strict: normalized exact title (or TMDB `original_title`) with a
 ±1-year tolerance; very long titles retry with the part before the first comma.
 Anything else is reported as unmatched rather than guessed — wrong genres are
-worse than missing ones. Results live in `film_meta` / `film_genre`, keyed by
-`(source, source_id)`, so restarting the app (which rebuilds only `items`)
-never discards them; re-runs skip already-enriched films. TV entries from the
-Letterboxd export (series, miniseries) have no TMDB movie match and stay
-unmatched.
+worse than missing ones. Results live in `film_meta` / `film_genre` /
+`film_keyword`, keyed by `(source, source_id)`, so restarting the app (which
+rebuilds only `items`) never discards them; re-runs skip already-enriched
+films. `film_meta.keywords_fetched` records the attempt, so a film TMDB has no
+keywords for is not refetched every run. TV entries from the Letterboxd export
+(series, miniseries) have no TMDB movie match and stay unmatched.
 
 ## Setup
 

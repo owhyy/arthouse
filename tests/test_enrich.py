@@ -3,8 +3,8 @@ from pathlib import Path
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from arthouse.enrich import TmdbMovie, enrich_films, find_film, match_film
-from arthouse.library import FilmGenre, FilmMeta, build_db
+from arthouse.enrich import TmdbMovie, enrich_films, find_film, keyword_report, match_film
+from arthouse.library import FilmGenre, FilmKeyword, FilmMeta, build_db
 
 
 class FakeTmdb:
@@ -14,9 +14,12 @@ class FakeTmdb:
         self,
         results: dict[str, list[TmdbMovie]],
         directors: dict[int, str] | None = None,
+        keywords: dict[int, list[str]] | None = None,
     ) -> None:
         self._results: dict[str, list[TmdbMovie]] = results
         self._directors: dict[int, str] = directors or {}
+        self._keywords: dict[int, list[str]] = keywords or {}
+        self.keyword_calls: int = 0
 
     def search_movie(self, title: str, year: int | None) -> list[TmdbMovie]:
         del year  # the fake is keyed by title only
@@ -27,6 +30,10 @@ class FakeTmdb:
 
     def directors(self, tmdb_id: int) -> str:
         return self._directors.get(tmdb_id, f"Director {tmdb_id}")
+
+    def keywords(self, tmdb_id: int) -> list[str]:
+        self.keyword_calls += 1
+        return self._keywords.get(tmdb_id, [])
 
 
 def _movie(
@@ -107,7 +114,8 @@ def test_enrichment_stores_meta_and_genres(library_db: Engine) -> None:
                 _movie(1, "Fixture Film A", "1999-05-01", 100, [18, 878], "An A film.")
             ],
             "Fixture Film B": [_movie(2, "Fixture Film B", "2001-05-01", 50, [18], "A B film.")],
-        }
+        },
+        keywords={1: ["dystopia", "nihilism"], 2: ["drama"]},
     )
     stats = enrich_films(library_db, fake)
     assert stats.matched == 2
@@ -116,13 +124,20 @@ def test_enrichment_stores_meta_and_genres(library_db: Engine) -> None:
     with Session(library_db) as db:
         metas = {m.source_id: m for m in db.scalars(select(FilmMeta))}
         genres = {(g.source_id, g.tag) for g in db.scalars(select(FilmGenre))}
+        keywords = {(k.source_id, k.keyword) for k in db.scalars(select(FilmKeyword))}
     assert metas["https://boxd.it/aaa"].overview == "An A film."
     assert metas["https://boxd.it/aaa"].tmdb_id == 1
     assert metas["https://boxd.it/aaa"].director == "Director 1"
+    assert metas["https://boxd.it/aaa"].keywords_fetched
     assert genres == {
         ("https://boxd.it/aaa", "Drama"),
         ("https://boxd.it/aaa", "Science Fiction"),
         ("https://boxd.it/bbb", "Drama"),
+    }
+    assert keywords == {
+        ("https://boxd.it/aaa", "dystopia"),
+        ("https://boxd.it/aaa", "nihilism"),
+        ("https://boxd.it/bbb", "drama"),
     }
 
 
@@ -137,6 +152,7 @@ def test_enrichment_is_idempotent(library_db: Engine) -> None:
     # (a later TMDB entry may make it matchable) and reported again.
     assert second.skipped == 1
     assert second.unmatched == ["Fixture Film B (2001)"]
+    assert fake.keyword_calls == 1  # already-fetched keywords are not refetched
 
 
 def test_directors_are_backfilled_for_older_rows(library_db: Engine) -> None:
@@ -156,11 +172,69 @@ def test_directors_are_backfilled_for_older_rows(library_db: Engine) -> None:
     fake = FakeTmdb({}, directors={42: "Akira Kurosawa"})
     stats = enrich_films(library_db, fake)
     assert stats.backfilled == 1
+    assert stats.keywords == 1  # older rows get keywords too
     assert stats.matched == 0  # B is unmatched, A is already enriched
     with Session(library_db) as db:
         meta = db.get(FilmMeta, ("letterboxd", "https://boxd.it/aaa"))
     assert meta is not None
     assert meta.director == "Akira Kurosawa"
+
+
+def test_keywords_are_backfilled_for_older_rows(library_db: Engine) -> None:
+    with Session(library_db) as db:
+        db.add(
+            FilmMeta(
+                source="letterboxd",
+                source_id="https://boxd.it/aaa",
+                tmdb_id=42,
+                overview="Old row.",
+                poster_path=None,
+                matched_title="Fixture Film A",
+                matched_year=1999,
+            )
+        )
+        db.commit()
+    fake = FakeTmdb({}, keywords={42: ["dystopia", "nihilism"]})
+    stats = enrich_films(library_db, fake)
+    assert stats.keywords == 1
+    with Session(library_db) as db:
+        rows = {(k.source_id, k.keyword) for k in db.scalars(select(FilmKeyword))}
+        meta = db.get(FilmMeta, ("letterboxd", "https://boxd.it/aaa"))
+    assert rows == {
+        ("https://boxd.it/aaa", "dystopia"),
+        ("https://boxd.it/aaa", "nihilism"),
+    }
+    assert meta is not None
+    assert meta.keywords_fetched
+
+
+def test_empty_keyword_list_is_not_refetched(library_db: Engine) -> None:
+    fake = FakeTmdb(
+        {"Fixture Film A": [_movie(1, "Fixture Film A", "1999-05-01", 100, [18])]},
+        keywords={1: []},
+    )
+    enrich_films(library_db, fake)
+    assert fake.keyword_calls == 1
+    enrich_films(library_db, fake)
+    assert fake.keyword_calls == 1  # an empty result still counts as fetched
+
+
+def test_keyword_report_counts_coverage(library_db: Engine) -> None:
+    fake = FakeTmdb(
+        {
+            "Fixture Film A": [_movie(1, "Fixture Film A", "1999-05-01", 100, [18])],
+            "Fixture Film B": [_movie(2, "Fixture Film B", "2001-05-01", 50, [18])],
+        },
+        keywords={1: ["dystopia", "nihilism"], 2: []},
+    )
+    enrich_films(library_db, fake)
+    report = keyword_report(library_db)
+    assert report.films == 2
+    assert report.fetched == 2
+    assert report.empty == 1
+    assert report.rows == 2
+    assert report.distinct == 2
+    assert report.top == [("dystopia", 1), ("nihilism", 1)]
 
 
 def test_enrichment_survives_library_rebuild(library_db: Engine, fixtures_dir: Path) -> None:

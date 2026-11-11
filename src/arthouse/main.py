@@ -28,7 +28,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     data_dir = settings.data_dir
     data_dir.mkdir(parents=True, exist_ok=True)
-    app.state.engine = create_engine(f"sqlite:///{data_dir / 'library.db'}")
+    # echo=debug prints every SQL statement to stderr (the server terminal).
+    app.state.engine = create_engine(f"sqlite:///{data_dir / 'library.db'}", echo=settings.debug)
     build_db(app.state.engine, data_dir)
 
     templates.env.globals["asset"] = partial(  # pyright: ignore[reportArgumentType]

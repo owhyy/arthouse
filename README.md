@@ -100,5 +100,5 @@ Environment variables use the `ARTHOUSE_` prefix, or a `.env` at the project roo
 |---|---|---|
 | `ARTHOUSE_HOST` | `127.0.0.1` | Bind address for `uv run arthouse` |
 | `ARTHOUSE_PORT` | `8000` | Bind port for `uv run arthouse` |
-| `ARTHOUSE_DEBUG` | `false` | Enables reload; re-hashes assets per render |
+| `ARTHOUSE_DEBUG` | `false` | Enables reload; re-hashes assets per render; echoes SQL to stderr |
 | `ARTHOUSE_DATA_DIR` | `<project>/data` | Exports directory; `library.db` is built here |

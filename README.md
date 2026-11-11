@@ -16,12 +16,13 @@ uv run arthouse            # http://127.0.0.1:8000
 
 ## Library data
 
-`/library` renders your RateYourMusic, Letterboxd, and Goodreads exports as one
-grouped page (Music / Films / Books, each sorted by rating); every entry links
-to a detail page with the rating date, the original platform rating, and the
-platform it came from. Ratings are shown as a unified 0–10 score (one platform
-scale that maps all three losslessly: RYM ÷1, Letterboxd stars ×2, Goodreads
-quarters ×2). Put the exports in
+`/library` renders your RateYourMusic, Letterboxd, and Goodreads exports as a
+card grid with one tab per category (Music / Films / Books, each sorted by
+rating); tabs swap the grid in place via htmx (plain links without JS). Every
+entry links to a detail page with the rating date, the original platform
+rating, and the platform it came from. Ratings are shown as a unified 0–10
+score (one platform scale that maps all three losslessly: RYM ÷1, Letterboxd
+stars ×2, Goodreads quarters ×2). Put the exports in
 `data/` (git-ignored — personal data never enters the repo):
 
 ```
@@ -86,6 +87,7 @@ library.py       # ORM model, platform CSV parsers, SQLite build/queries
 routes/pages.py  # HTML routes only
 templates/         # Jinja2: base.html (navbar), index.html, library.html, library_detail.html
 static/            # css/app.src.css (Tailwind input) → css/app.css (committed build)
+static/js/         # vendored htmx (tab switching; app works without it)
 tests/             # httpx ASGITransport; synthetic fixtures; no sockets, no network
 data/              # git-ignored: personal exports + generated library.db
 ```
@@ -99,3 +101,4 @@ Environment variables use the `ARTHOUSE_` prefix, or a `.env` at the project roo
 | `ARTHOUSE_HOST` | `127.0.0.1` | Bind address for `uv run arthouse` |
 | `ARTHOUSE_PORT` | `8000` | Bind port for `uv run arthouse` |
 | `ARTHOUSE_DEBUG` | `false` | Enables reload; re-hashes assets per render |
+| `ARTHOUSE_DATA_DIR` | `<project>/data` | Exports directory; `library.db` is built here |

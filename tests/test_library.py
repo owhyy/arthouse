@@ -125,7 +125,9 @@ def test_build_db_tolerates_missing_data_dir(tmp_path: Path) -> None:
     assert build_db(engine, tmp_path / "nope") == 0
 
 
-async def test_library_page_renders_groups(client: httpx.AsyncClient, library_db: Engine) -> None:
+async def test_library_page_shows_default_music_tab(
+    client: httpx.AsyncClient, library_db: Engine
+) -> None:
     _override_db(library_db)
     try:
         response = await client.get("/library")
@@ -133,9 +135,39 @@ async def test_library_page_renders_groups(client: httpx.AsyncClient, library_db
         _clear_override()
     assert response.status_code == 200
     assert "Fixture Album" in response.text
-    assert "8/10" in response.text
+    assert "Fixture Film A" not in response.text  # only the active tab renders
     for label in ("Music", "Films", "Books"):
-        assert label in response.text
+        assert label in response.text  # tab strip
+
+
+async def test_library_tab_param_switches_category(
+    client: httpx.AsyncClient, library_db: Engine
+) -> None:
+    _override_db(library_db)
+    try:
+        films = await client.get("/library?tab=film")
+        books = await client.get("/library?tab=book")
+        bogus = await client.get("/library?tab=bogus")
+    finally:
+        _clear_override()
+    assert films.status_code == 200
+    assert "Fixture Film A" in films.text
+    assert "Fixture Album" not in films.text
+    assert books.status_code == 200
+    assert "Fixture Book A" in books.text
+    assert bogus.status_code == 404
+
+
+async def test_library_tabs_use_htmx_swap(client: httpx.AsyncClient, library_db: Engine) -> None:
+    _override_db(library_db)
+    try:
+        response = await client.get("/library")
+    finally:
+        _clear_override()
+    assert 'hx-target="#library-region"' in response.text
+    assert 'hx-select="#library-region"' in response.text
+    assert 'hx-push-url="true"' in response.text
+    assert 'id="library-region"' in response.text
 
 
 async def test_library_page_empty_when_no_data(client: httpx.AsyncClient, tmp_path: Path) -> None:
@@ -148,3 +180,4 @@ async def test_library_page_empty_when_no_data(client: httpx.AsyncClient, tmp_pa
         _clear_override()
     assert response.status_code == 200
     assert "0 rated items" in response.text
+    assert "Nothing here yet." in response.text

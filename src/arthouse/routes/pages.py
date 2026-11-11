@@ -24,16 +24,27 @@ async def library_detail(request: Request, item_id: int, db: DbSession):
 
 
 @router.get("/library")
-async def library(request: Request, db: DbSession):
+async def library(request: Request, db: DbSession, tab: str = "music"):
+    if tab not in MEDIA_ORDER:
+        raise HTTPException(status_code=404)
     items = query_items(db)
-    groups = [
+    counts = {media: sum(1 for i in items if i.media_type == media) for media in MEDIA_ORDER}
+    tabs = [
         {
+            "key": media,
             "label": MEDIA_LABELS[media],
-            "count": sum(1 for i in items if i.media_type == media),
-            "items": [i for i in items if i.media_type == media],
+            "count": counts[media],
+            "active": media == tab,
         }
         for media in MEDIA_ORDER
     ]
     return templates.TemplateResponse(
-        request, "library.html", {"title": "Library", "groups": groups, "total": len(items)}
+        request,
+        "library.html",
+        {
+            "title": f"Library · {MEDIA_LABELS[tab]}",
+            "tabs": tabs,
+            "items": [i for i in items if i.media_type == tab],
+            "total": len(items),
+        },
     )

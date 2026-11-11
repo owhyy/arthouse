@@ -7,7 +7,8 @@ async def test_index_renders_blank_page_with_navbar(client: httpx.AsyncClient) -
     assert response.headers["content-type"].startswith("text/html")
     assert "<nav" in response.text
     assert "/library" in response.text  # url_for emits absolute URLs
-    assert "<script" not in response.text.lower()
+    assert "htmx.min.js" in response.text  # interactive tabs ship with htmx
+    assert "defer" in response.text
 
 
 async def test_unknown_route_404s(client: httpx.AsyncClient) -> None:

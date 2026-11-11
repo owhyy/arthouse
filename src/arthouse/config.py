@@ -18,6 +18,9 @@ class Settings(BaseSettings):
 
     data_dir: Path = BASE_DIR / "data"
 
+    # TMDB: v3 API key or v4 read access token (Bearer), for film genres.
+    tmdb_api_key: str = ""
+
     # Server
     host: str = "127.0.0.1"
     port: int = 8000

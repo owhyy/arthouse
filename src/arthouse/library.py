@@ -310,6 +310,17 @@ def query_film_meta(db: Session, source: str, source_id: str) -> tuple[FilmMeta,
     return meta, genres
 
 
+def query_film_keywords(db: Session, source: str, source_id: str) -> list[str]:
+    """TMDB keyword descriptors for one film, sorted alphabetically."""
+    return list(
+        db.scalars(
+            select(FilmKeyword.keyword)
+            .where(FilmKeyword.source == source, FilmKeyword.source_id == source_id)
+            .order_by(FilmKeyword.keyword)
+        )
+    )
+
+
 def query_film_directors(db: Session) -> dict[str, str]:
     """Director names keyed by platform id — one query for the whole grid."""
     return {meta.source_id: meta.director for meta in db.scalars(select(FilmMeta)) if meta.director}

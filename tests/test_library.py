@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from arthouse.deps import get_db
 from arthouse.library import (
     FilmGenre,
+    FilmKeyword,
     FilmMeta,
     build_db,
     query_item,
@@ -22,6 +23,7 @@ def _enrich_film(
     overview: str,
     genres: list[str],
     director: str | None = "Fixture Director",
+    keywords: list[str] | None = None,
 ) -> None:
     with Session(engine) as db:
         db.add(
@@ -38,6 +40,8 @@ def _enrich_film(
         )
         for tag in genres:
             db.add(FilmGenre(source="letterboxd", source_id=source_id, tag=tag))
+        for keyword in keywords or []:
+            db.add(FilmKeyword(source="letterboxd", source_id=source_id, keyword=keyword))
         db.commit()
 
 
@@ -126,7 +130,13 @@ async def test_detail_page_shows_review(client: httpx.AsyncClient, library_db: E
 async def test_detail_page_shows_synopsis_and_genres(
     client: httpx.AsyncClient, library_db: Engine
 ) -> None:
-    _enrich_film(library_db, "https://boxd.it/aaa", "A fixture synopsis.", ["Drama", "Fantasy"])
+    _enrich_film(
+        library_db,
+        "https://boxd.it/aaa",
+        "A fixture synopsis.",
+        ["Drama", "Fantasy"],
+        keywords=["slow cinema", "loneliness"],
+    )
     with Session(library_db) as db:
         film = next(i for i in query_items(db) if i.title == "Fixture Film A")
     _override_db(library_db)
@@ -141,6 +151,9 @@ async def test_detail_page_shows_synopsis_and_genres(
     assert "Drama" in response.text
     assert "Fantasy" in response.text
     assert "Fixture Director" in response.text  # film credit line
+    assert "Descriptors" in response.text
+    assert "slow cinema" in response.text
+    assert "loneliness" in response.text
 
 
 async def test_detail_page_omits_synopsis_when_unenriched(
@@ -155,6 +168,7 @@ async def test_detail_page_omits_synopsis_when_unenriched(
         _clear_override()
     assert response.status_code == 200
     assert "Synopsis" not in response.text
+    assert "Descriptors" not in response.text
 
 
 async def test_film_grid_shows_genre_tags(client: httpx.AsyncClient, library_db: Engine) -> None:

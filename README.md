@@ -24,9 +24,9 @@ the form also works as a plain GET). Every entry links to a detail page with the
 rating, the platform it came from, and your review when the export has one
 (Letterboxd `reviews.csv`, RYM `Review`, Goodreads `My Review`; HTML is
 stripped and paragraphs preserved). Enriched films also show TMDB genre tags
-(on cards and the detail page), the TMDB synopsis (detail page only), and the
-director in the same credit line where books show the author and music the
-artist.
+(on cards and the detail page), the TMDB synopsis and keyword descriptors
+(detail page only), and the director in the same credit line where books show
+the author and music the artist.
 Ratings are shown as a unified 0–10 score (one platform scale that maps all
 three losslessly: RYM ÷1, Letterboxd stars ×2, Goodreads quarters ×2). Put the
 exports in

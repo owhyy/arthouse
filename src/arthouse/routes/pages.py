@@ -9,6 +9,7 @@ from arthouse.library import (
     FilmMeta,
     query_film_directors,
     query_film_genres,
+    query_film_keywords,
     query_film_meta,
     query_item,
     query_items,
@@ -29,14 +30,22 @@ async def library_detail(request: Request, item_id: int, db: DbSession):
         raise HTTPException(status_code=404)
     film_meta: FilmMeta | None = None
     genres: list[str] = []
+    keywords: list[str] = []
     if item.media_type == "film":
         enriched = query_film_meta(db, item.source, item.source_id)
         if enriched is not None:
             film_meta, genres = enriched
+            keywords = query_film_keywords(db, item.source, item.source_id)
     return templates.TemplateResponse(
         request,
         "library_detail.html",
-        {"title": item.title, "item": item, "film_meta": film_meta, "genres": genres},
+        {
+            "title": item.title,
+            "item": item,
+            "film_meta": film_meta,
+            "genres": genres,
+            "keywords": keywords,
+        },
     )
 
 

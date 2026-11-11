@@ -10,12 +10,30 @@
     {% if item.year %}{% if credit %} · {% endif %}{{ item.year }}{% endif %}
   </p>
 
-  {% if genres %}
-    <ul class="mt-4 flex flex-wrap gap-2">
-      {% for genre in genres %}
-        <li class="rounded-full border border-line px-3 py-1 text-xs text-muted">{{ genre }}</li>
-      {% endfor %}
-    </ul>
+  {% if genres or keywords %}
+    <div class="mt-4 space-y-3">
+      {% if genres %}
+        <div>
+          <h2 class="text-sm font-semibold tracking-wide text-muted uppercase">Genres</h2>
+          <ul class="mt-2 flex flex-wrap gap-2">
+            {% for genre in genres %}
+              <li class="rounded-full border border-line px-3 py-1 text-xs text-muted">{{ genre }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+      {% if keywords %}
+        <div>
+          <h2 class="text-sm font-semibold tracking-wide text-muted uppercase">Descriptors</h2>
+          <ul class="mt-2 flex flex-wrap gap-2">
+            {% for keyword in keywords %}
+              <li class="rounded-full border border-line px-3 py-1 text-xs text-muted">{{ keyword }}</li>
+            {% endfor %}
+          </ul>
+          <p class="mt-2 text-xs text-muted">Descriptors via TMDB keywords</p>
+        </div>
+      {% endif %}
+    </div>
   {% endif %}
 
   {% if film_meta and film_meta.overview %}

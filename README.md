@@ -68,6 +68,27 @@ films. `film_meta.keywords_fetched` records the attempt, so a film TMDB has no
 keywords for is not refetched every run. TV entries from the Letterboxd export
 (series, miniseries) have no TMDB movie match and stay unmatched.
 
+### Content similarity (descriptors)
+
+TMDB keywords are normalized into a shared vocabulary (`based on novel` →
+`based on novel or book`, parentheticals stripped, place variants unified) and
+tagged with a facet: `theme`, `mood`, `style`, `setting`, or `production`.
+Production trivia (`aftercreditsstinger`, `duringcreditsstinger`) is dropped.
+Rebuild the derived tables and print the most widely shared descriptors per
+facet:
+
+```bash
+uv run python -m arthouse.descriptors
+```
+
+Nearest neighbours are TF-IDF cosine over binary descriptor presence
+(`idf = log((1 + N) / (1 + df)) + 1`, L2-normalized); descriptors shared by
+fewer than 3 films are ignored by default (`--min-df`). Ask for specific films:
+
+```bash
+uv run python -m arthouse.descriptors --title "Seven Samurai" --title "Aftersun"
+```
+
 ## Setup
 
 ```bash
@@ -114,6 +135,7 @@ config.py        # pydantic-settings; paths anchored to the project root
 deps.py          # Jinja2Templates singleton, SQLAlchemy session dependency
 assets.py        # content-hashed asset URLs (`asset()` template global)
 library.py       # ORM model, platform CSV parsers, SQLite build/queries
+descriptors.py   # keyword normalization, facets, TF-IDF content kNN
 routes/pages.py  # HTML routes only
 templates/         # Jinja2: base.html (navbar), index.html, library.html, library_detail.html
 static/            # css/app.src.css (Tailwind input) → css/app.css (committed build)

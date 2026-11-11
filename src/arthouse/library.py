@@ -113,6 +113,25 @@ class FilmKeyword(Base):
     keyword: Mapped[str] = mapped_column(primary_key=True)
 
 
+class Descriptor(Base):
+    """Normalized descriptor vocabulary with a facet (theme, mood, …)."""
+
+    __tablename__: str = "descriptor"
+
+    name: Mapped[str] = mapped_column(primary_key=True)
+    facet: Mapped[str]
+
+
+class ItemDescriptor(Base):
+    """One normalized descriptor attached to a film."""
+
+    __tablename__: str = "item_descriptor"
+
+    source: Mapped[str] = mapped_column(primary_key=True)
+    source_id: Mapped[str] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(primary_key=True)
+
+
 def _read_csv(path: Path) -> list[dict[str, str]]:
     with open(path, encoding="utf-8-sig", newline="") as f:
         # RYM headers contain stray spaces (", First Name"); keys are stripped.

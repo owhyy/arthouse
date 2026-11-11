@@ -87,7 +87,7 @@ library.py       # ORM model, platform CSV parsers, SQLite build/queries
 routes/pages.py  # HTML routes only
 templates/         # Jinja2: base.html (navbar), index.html, library.html, library_detail.html
 static/            # css/app.src.css (Tailwind input) → css/app.css (committed build)
-static/js/         # vendored htmx (tab switching; app works without it)
+static/js/         # vendored htmx 4.0.1 (tab switching; app works without it)
 tests/             # httpx ASGITransport; synthetic fixtures; no sockets, no network
 data/              # git-ignored: personal exports + generated library.db
 ```

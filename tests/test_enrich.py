@@ -10,8 +10,13 @@ from arthouse.library import FilmGenre, FilmMeta, build_db
 class FakeTmdb:
     """Network-free stand-in for TmdbClient."""
 
-    def __init__(self, results: dict[str, list[TmdbMovie]]) -> None:
+    def __init__(
+        self,
+        results: dict[str, list[TmdbMovie]],
+        directors: dict[int, str] | None = None,
+    ) -> None:
         self._results: dict[str, list[TmdbMovie]] = results
+        self._directors: dict[int, str] = directors or {}
 
     def search_movie(self, title: str, year: int | None) -> list[TmdbMovie]:
         del year  # the fake is keyed by title only
@@ -19,6 +24,9 @@ class FakeTmdb:
 
     def genre_map(self) -> dict[int, str]:
         return {18: "Drama", 878: "Science Fiction"}
+
+    def directors(self, tmdb_id: int) -> str:
+        return self._directors.get(tmdb_id, f"Director {tmdb_id}")
 
 
 def _movie(
@@ -110,6 +118,7 @@ def test_enrichment_stores_meta_and_genres(library_db: Engine) -> None:
         genres = {(g.source_id, g.tag) for g in db.scalars(select(FilmGenre))}
     assert metas["https://boxd.it/aaa"].overview == "An A film."
     assert metas["https://boxd.it/aaa"].tmdb_id == 1
+    assert metas["https://boxd.it/aaa"].director == "Director 1"
     assert genres == {
         ("https://boxd.it/aaa", "Drama"),
         ("https://boxd.it/aaa", "Science Fiction"),
@@ -128,6 +137,30 @@ def test_enrichment_is_idempotent(library_db: Engine) -> None:
     # (a later TMDB entry may make it matchable) and reported again.
     assert second.skipped == 1
     assert second.unmatched == ["Fixture Film B (2001)"]
+
+
+def test_directors_are_backfilled_for_older_rows(library_db: Engine) -> None:
+    with Session(library_db) as db:
+        db.add(
+            FilmMeta(
+                source="letterboxd",
+                source_id="https://boxd.it/aaa",
+                tmdb_id=42,
+                overview="Old row.",
+                poster_path=None,
+                matched_title="Fixture Film A",
+                matched_year=1999,
+            )
+        )
+        db.commit()
+    fake = FakeTmdb({}, directors={42: "Akira Kurosawa"})
+    stats = enrich_films(library_db, fake)
+    assert stats.backfilled == 1
+    assert stats.matched == 0  # B is unmatched, A is already enriched
+    with Session(library_db) as db:
+        meta = db.get(FilmMeta, ("letterboxd", "https://boxd.it/aaa"))
+    assert meta is not None
+    assert meta.director == "Akira Kurosawa"
 
 
 def test_enrichment_survives_library_rebuild(library_db: Engine, fixtures_dir: Path) -> None:

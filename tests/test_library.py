@@ -2,7 +2,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 
 from arthouse.deps import get_db
@@ -16,7 +16,13 @@ from arthouse.library import (
 from arthouse.main import app
 
 
-def _enrich_film(engine: Engine, source_id: str, overview: str, genres: list[str]) -> None:
+def _enrich_film(
+    engine: Engine,
+    source_id: str,
+    overview: str,
+    genres: list[str],
+    director: str | None = "Fixture Director",
+) -> None:
     with Session(engine) as db:
         db.add(
             FilmMeta(
@@ -25,6 +31,7 @@ def _enrich_film(engine: Engine, source_id: str, overview: str, genres: list[str
                 tmdb_id=1,
                 overview=overview,
                 poster_path=None,
+                director=director,
                 matched_title="Fixture Film A",
                 matched_year=1999,
             )
@@ -133,6 +140,7 @@ async def test_detail_page_shows_synopsis_and_genres(
     assert "Synopsis via TMDB" in response.text
     assert "Drama" in response.text
     assert "Fantasy" in response.text
+    assert "Fixture Director" in response.text  # film credit line
 
 
 async def test_detail_page_omits_synopsis_when_unenriched(
@@ -158,6 +166,7 @@ async def test_film_grid_shows_genre_tags(client: httpx.AsyncClient, library_db:
         _clear_override()
     assert response.status_code == 200
     assert "Drama" in response.text
+    assert "Fixture Director" in response.text  # director stands in for creator
     assert "A fixture synopsis." not in response.text  # synopsis is detail-only
 
 
@@ -217,6 +226,31 @@ async def test_unknown_item_404s(client: httpx.AsyncClient, library_db: Engine) 
     finally:
         _clear_override()
     assert response.status_code == 404
+
+
+def test_build_db_migrates_film_meta_without_director(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'library.db'}")
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE TABLE film_meta (source VARCHAR NOT NULL, "
+                + "source_id VARCHAR NOT NULL, tmdb_id INTEGER NOT NULL, "
+                + "overview VARCHAR NOT NULL, poster_path VARCHAR, "
+                + "matched_title VARCHAR NOT NULL, matched_year INTEGER, "
+                + "enriched_at DATETIME, PRIMARY KEY (source, source_id))"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO film_meta VALUES ('letterboxd', 'https://boxd.it/old', "
+                + "7, 'Old.', NULL, 'Old', 1999, '2026-01-01')"
+            )
+        )
+    build_db(engine, tmp_path / "nope")  # startup migration must preserve rows
+    with Session(engine) as db:
+        meta = db.get(FilmMeta, ("letterboxd", "https://boxd.it/old"))
+    assert meta is not None
+    assert meta.director is None  # column added, backfill happens on enrich
 
 
 def test_build_db_tolerates_missing_data_dir(tmp_path: Path) -> None:

@@ -31,9 +31,10 @@
                 <span class="truncate font-medium">{{ item.title }}</span>
                 <span class="shrink-0 text-sm font-medium text-accent">{{ item.score }}/10</span>
               </div>
+              {% set credit = item.creator or film_directors.get(item.source_id, "") %}
               <p class="mt-1 truncate text-sm text-muted">
-                {% if item.creator %}{{ item.creator }}{% endif %}
-                {% if item.year %}{% if item.creator %} · {% endif %}{{ item.year }}{% endif %}
+                {% if credit %}{{ credit }}{% endif %}
+                {% if item.year %}{% if credit %} · {% endif %}{{ item.year }}{% endif %}
               </p>
               {% if film_genres %}
                 {% set tags = film_genres.get(item.source_id, []) %}

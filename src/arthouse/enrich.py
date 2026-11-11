@@ -49,6 +49,15 @@ class TmdbGenreResponse(TypedDict, total=False):
     genres: list[TmdbGenre]
 
 
+class TmdbCrewMember(TypedDict):
+    name: str
+    job: NotRequired[str]
+
+
+class TmdbCreditsResponse(TypedDict, total=False):
+    crew: list[TmdbCrewMember]
+
+
 def _titles(movie: TmdbMovie) -> tuple[str, ...]:
     """TMDB's `title` is localized (Le Bonheur is listed as "Happiness")."""
     return (movie.get("title", ""), movie.get("original_title", ""))
@@ -102,6 +111,8 @@ class TmdbLike(Protocol):
     def search_movie(self, title: str, year: int | None) -> list[TmdbMovie]: ...
 
     def genre_map(self) -> dict[int, str]: ...
+
+    def directors(self, tmdb_id: int) -> str: ...
 
 
 class TmdbClient:
@@ -161,11 +172,18 @@ class TmdbClient:
             self._genres = {g["id"]: g["name"] for g in payload.get("genres", [])}
         return self._genres
 
+    def directors(self, tmdb_id: int) -> str:
+        """Comma-joined director names; "" when TMDB lists none."""
+        payload = cast(TmdbCreditsResponse, self._get(f"/movie/{tmdb_id}/credits"))
+        names = [m["name"] for m in payload.get("crew", []) if m.get("job") == "Director"]
+        return ", ".join(names)
+
 
 @dataclass
 class EnrichStats:
     matched: int = 0
     skipped: int = 0
+    backfilled: int = 0
     unmatched: list[str] = field(default_factory=list)
 
 
@@ -174,7 +192,7 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
     stats = EnrichStats()
     genre_names = client.genre_map()
     with Session(engine) as db:
-        done = {(meta.source, meta.source_id) for meta in db.scalars(select(FilmMeta))}
+        done = {(meta.source, meta.source_id): meta for meta in db.scalars(select(FilmMeta))}
         films = list(
             db.scalars(
                 select(Item)
@@ -188,6 +206,16 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
         stats.skipped = len(films) - len(pending)
         if limit is not None:
             pending = pending[:limit]
+
+        # Rows enriched before the director column existed (or before this
+        # step) get their director fetched once; `director is None` means
+        # "never fetched", "" means "fetched, TMDB lists none".
+        for meta in done.values():
+            if meta.director is None:
+                meta.director = client.directors(meta.tmdb_id)
+                db.commit()
+                stats.backfilled += 1
+
         for film in pending:
             match = find_film(client, film.title, film.year)
             if match is None:
@@ -201,6 +229,7 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
                     tmdb_id=match["id"],
                     overview=match.get("overview", ""),
                     poster_path=match.get("poster_path"),
+                    director=client.directors(match["id"]),
                     matched_title=match.get("title", ""),
                     matched_year=int(release[:4]) if release[:4].isdigit() else None,
                 )
@@ -224,7 +253,10 @@ def main() -> None:
     engine = create_engine(f"sqlite:///{settings.data_dir / 'library.db'}")
     with TmdbClient(settings.tmdb_api_key) as client:
         stats = enrich_films(engine, client, limit=cast(int | None, args.limit))
-    print(f"matched: {stats.matched}, skipped: {stats.skipped}, unmatched: {len(stats.unmatched)}")
+    print(
+        f"matched: {stats.matched}, skipped: {stats.skipped}, "
+        + f"directors backfilled: {stats.backfilled}, unmatched: {len(stats.unmatched)}"
+    )
     for line in stats.unmatched:
         print(f"  unmatched: {line}")
 

@@ -5,8 +5,9 @@
 
   <h1 class="mt-4 text-3xl font-bold tracking-tight">{{ item.title }}</h1>
   <p class="mt-2 text-muted">
-    {% if item.creator %}{{ item.creator }}{% endif %}
-    {% if item.year %}{% if item.creator %} · {% endif %}{{ item.year }}{% endif %}
+    {% set credit = item.creator or (film_meta.director if film_meta else "") %}
+    {% if credit %}{{ credit }}{% endif %}
+    {% if item.year %}{% if credit %} · {% endif %}{{ item.year }}{% endif %}
   </p>
 
   {% if genres %}

@@ -10,7 +10,7 @@ import re
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 MEDIA_ORDER = ("music", "film", "book")
@@ -83,6 +83,8 @@ class FilmMeta(Base):
     tmdb_id: Mapped[int]
     overview: Mapped[str]
     poster_path: Mapped[str | None]
+    # None means "not fetched yet"; "" means TMDB lists no director.
+    director: Mapped[str | None] = mapped_column(default=None)
     matched_title: Mapped[str]
     matched_year: Mapped[int | None]
     enriched_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
@@ -211,6 +213,17 @@ def _letterboxd_reviews(path: Path) -> dict[tuple[str, int | None], str]:
     return reviews
 
 
+def _add_missing_columns(engine: Engine) -> None:
+    """Tiny forward migration for enrichment tables (create_all won't ALTER)."""
+    inspector = inspect(engine)
+    if not inspector.has_table("film_meta"):
+        return
+    columns = {column["name"] for column in inspector.get_columns("film_meta")}
+    if "director" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE film_meta ADD COLUMN director VARCHAR"))
+
+
 def build_db(engine: Engine, data_dir: Path) -> int:
     """(Re)build the schema and items from data_dir exports; returns item count.
 
@@ -239,6 +252,7 @@ def build_db(engine: Engine, data_dir: Path) -> int:
     # Only the export-derived items table is rebuilt; enrichment tables
     # (film_meta, film_genre) persist across restarts.
     Base.metadata.tables["items"].drop(engine, checkfirst=True)
+    _add_missing_columns(engine)
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         session.add_all(items)
@@ -270,6 +284,11 @@ def query_film_meta(db: Session, source: str, source_id: str) -> tuple[FilmMeta,
         )
     )
     return meta, genres
+
+
+def query_film_directors(db: Session) -> dict[str, str]:
+    """Director names keyed by platform id — one query for the whole grid."""
+    return {meta.source_id: meta.director for meta in db.scalars(select(FilmMeta)) if meta.director}
 
 
 def query_film_genres(db: Session) -> dict[str, list[str]]:

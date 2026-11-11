@@ -6,11 +6,43 @@
   <h1 class="text-3xl font-bold tracking-tight">Library</h1>
   <p class="mt-2 leading-relaxed text-muted">{{ total }} rated items across music, film, and books.</p>
 
+  <form action="{{ url_for('library') }}"
+        method="get"
+        role="search"
+        class="mt-6 flex gap-2"
+        hx-get="{{ url_for('library') }}"
+        hx-target="#library-region"
+        hx-select="#library-region"
+        hx-swap="outerHTML"
+        hx-push-url="true">
+    <input type="hidden" name="tab" value="{{ tab }}" id="library-tab">
+    <input type="search"
+           name="q"
+           value="{{ q }}"
+           placeholder="Search titles in this tab"
+           aria-label="Search titles"
+           hx-get="{{ url_for('library') }}"
+           hx-trigger="input changed delay:300ms"
+           hx-target="#library-region"
+           hx-select="#library-region"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           hx-include="closest form"
+           class="w-full rounded border border-line bg-paper px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:outline-none">
+    <button type="submit" class="rounded border border-line px-3 py-2 text-sm text-muted hover:border-accent hover:text-ink">
+      Search
+    </button>
+  </form>
+
   <section id="library-region" class="mt-6">
+    {% if request.headers.get("HX-Request") %}
+      {# Keep the search form's hidden tab in sync after a tab swap. #}
+      <input type="hidden" name="tab" value="{{ tab }}" hx-swap-oob="outerHTML:#library-tab">
+    {% endif %}
     <nav class="flex gap-1 border-b border-line" aria-label="Categories">
       {% for t in tabs %}
-        <a href="{{ url_for('library') }}?tab={{ t['key'] }}"
-           hx-get="{{ url_for('library') }}?tab={{ t['key'] }}"
+        <a href="{{ url_for('library') }}?tab={{ t['key'] }}{% if q %}&amp;q={{ q|urlencode }}{% endif %}"
+           hx-get="{{ url_for('library') }}?tab={{ t['key'] }}{% if q %}&amp;q={{ q|urlencode }}{% endif %}"
            hx-target="#library-region"
            hx-select="#library-region"
            hx-swap="outerHTML"
@@ -51,6 +83,8 @@
           </li>
         {% endfor %}
       </ul>
+    {% elif q %}
+      <p class="mt-4 text-sm text-muted">No titles match “{{ q }}”.</p>
     {% else %}
       <p class="mt-4 text-sm text-muted">Nothing here yet.</p>
     {% endif %}

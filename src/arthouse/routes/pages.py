@@ -41,11 +41,13 @@ async def library_detail(request: Request, item_id: int, db: DbSession):
 
 
 @router.get("/library")
-async def library(request: Request, db: DbSession, tab: str = "music"):
+async def library(request: Request, db: DbSession, tab: str = "music", q: str = ""):
     if tab not in MEDIA_ORDER:
         raise HTTPException(status_code=404)
-    items = query_items(db)
-    counts = {media: sum(1 for i in items if i.media_type == media) for media in MEDIA_ORDER}
+    search = q.strip()
+    all_items = query_items(db)
+    counts = {media: sum(1 for i in all_items if i.media_type == media) for media in MEDIA_ORDER}
+    items = query_items(db, media_type=tab, search=search or None)
     tabs = [
         {
             "key": media,
@@ -60,10 +62,12 @@ async def library(request: Request, db: DbSession, tab: str = "music"):
         "library.html",
         {
             "title": f"Library · {MEDIA_LABELS[tab]}",
+            "tab": tab,
+            "q": search,
             "tabs": tabs,
-            "items": [i for i in items if i.media_type == tab],
+            "items": items,
             "film_directors": query_film_directors(db) if tab == "film" else {},
             "film_genres": query_film_genres(db) if tab == "film" else {},
-            "total": len(items),
+            "total": len(all_items),
         },
     )

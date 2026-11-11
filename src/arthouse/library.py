@@ -260,8 +260,14 @@ def build_db(engine: Engine, data_dir: Path) -> int:
     return len(items)
 
 
-def query_items(db: Session, media_type: str | None = None) -> list[Item]:
-    stmt = select(Item).order_by(Item.rating.desc(), Item.title.collate("nocase"))
+def query_items(
+    db: Session, media_type: str | None = None, search: str | None = None
+) -> list[Item]:
+    """Rated items, newest rating first; `search` matches the title only."""
+    stmt = select(Item)
+    if search:
+        stmt = stmt.where(Item.title.ilike(f"%{search}%"))
+    stmt = stmt.order_by(Item.rating.desc(), Item.title.collate("nocase"))
     if media_type is not None:
         stmt = stmt.where(Item.media_type == media_type)
     return list(db.scalars(stmt))

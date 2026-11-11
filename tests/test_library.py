@@ -303,6 +303,55 @@ async def test_library_tabs_use_htmx_swap(client: httpx.AsyncClient, library_db:
     assert 'id="library-region"' in response.text
 
 
+async def test_search_filters_titles_in_the_active_tab(
+    client: httpx.AsyncClient, library_db: Engine
+) -> None:
+    _override_db(library_db)
+    try:
+        films = await client.get("/library", params={"tab": "film", "q": "film a"})
+        music = await client.get("/library", params={"tab": "music", "q": "film a"})
+    finally:
+        _clear_override()
+    assert films.status_code == 200
+    assert "Fixture Film A" in films.text
+    assert "Fixture Film B" not in films.text
+    assert "No titles match" in music.text  # search does not cross tabs
+
+
+async def test_search_is_case_insensitive(client: httpx.AsyncClient, library_db: Engine) -> None:
+    _override_db(library_db)
+    try:
+        response = await client.get("/library", params={"tab": "film", "q": "FIXTURE FILM B"})
+    finally:
+        _clear_override()
+    assert "Fixture Film B" in response.text
+    assert "Fixture Film A" not in response.text
+
+
+async def test_search_matches_titles_only(client: httpx.AsyncClient, library_db: Engine) -> None:
+    _override_db(library_db)
+    try:
+        # "Fixture Artist" is a creator, not a title; review text is ignored too.
+        creators = await client.get("/library", params={"tab": "music", "q": "fixture artist"})
+        reviews = await client.get("/library", params={"tab": "book", "q": "markup"})
+    finally:
+        _clear_override()
+    assert "No titles match" in creators.text
+    assert "No titles match" in reviews.text
+
+
+async def test_search_keeps_query_in_tab_links(
+    client: httpx.AsyncClient, library_db: Engine
+) -> None:
+    _override_db(library_db)
+    try:
+        response = await client.get("/library", params={"tab": "film", "q": "fixture"})
+    finally:
+        _clear_override()
+    assert "q=fixture" in response.text  # switching tabs keeps the search
+    assert 'name="q"' in response.text  # the box lives outside the swapped region
+
+
 async def test_library_page_empty_when_no_data(client: httpx.AsyncClient, tmp_path: Path) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'empty.db'}")
     build_db(engine, tmp_path / "nope")

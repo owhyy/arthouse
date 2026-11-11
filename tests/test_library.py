@@ -66,6 +66,46 @@ def test_scores_normalize_to_10_point_scale(library_db: Engine) -> None:
     assert items["Fixture Book A"].rating_native == "4.0"
 
 
+def test_reviews_are_parsed_and_cleaned(library_db: Engine) -> None:
+    with Session(library_db) as db:
+        items = {i.title: i for i in query_items(db)}
+    # Letterboxd review text lives in reviews.csv and its export URIs differ
+    # from ratings.csv, so it joins on title + year. HTML is stripped.
+    assert items["Fixture Film A"].review == "A fixture review.\nSecond line."
+    assert items["Fixture Album"].review == "Fixture review text."
+    assert items["Fixture Book A"].review == "Book review with markup."
+    assert items["Fixture Best Album"].review is None
+
+
+async def test_detail_page_shows_review(client: httpx.AsyncClient, library_db: Engine) -> None:
+    with Session(library_db) as db:
+        film = next(i for i in query_items(db) if i.title == "Fixture Film A")
+    _override_db(library_db)
+    try:
+        response = await client.get(f"/library/{film.id}")
+    finally:
+        _clear_override()
+    assert response.status_code == 200
+    assert "Review" in response.text
+    assert "A fixture review." in response.text
+    assert "Second line." in response.text
+    assert "<b>fixture</b>" not in response.text  # cleaned, not raw HTML
+
+
+async def test_detail_page_omits_empty_review(
+    client: httpx.AsyncClient, library_db: Engine
+) -> None:
+    with Session(library_db) as db:
+        album = next(i for i in query_items(db) if i.title == "Fixture Best Album")
+    _override_db(library_db)
+    try:
+        response = await client.get(f"/library/{album.id}")
+    finally:
+        _clear_override()
+    assert response.status_code == 200
+    assert "Review" not in response.text
+
+
 async def test_detail_page_shows_provenance(client: httpx.AsyncClient, library_db: Engine) -> None:
     with Session(library_db) as db:
         album = next(i for i in query_items(db) if i.title == "Fixture Album")

@@ -7,7 +7,6 @@ re-runs skip films that are already enriched.
 """
 
 import argparse
-import re
 import time
 from dataclasses import dataclass, field
 from types import TracebackType
@@ -18,7 +17,7 @@ from sqlalchemy import Engine, create_engine, select
 from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
-from arthouse.library import FilmGenre, FilmMeta, Item
+from arthouse.library import FilmGenre, FilmMeta, Item, normalize_title
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 YEAR_TOLERANCE = 1  # Letterboxd/library years can differ from TMDB's primary release
@@ -48,10 +47,6 @@ class TmdbGenre(TypedDict):
 
 class TmdbGenreResponse(TypedDict, total=False):
     genres: list[TmdbGenre]
-
-
-def normalize_title(title: str) -> str:
-    return re.sub(r"[^a-z0-9 ]+", "", title.lower()).strip()
 
 
 def _titles(movie: TmdbMovie) -> tuple[str, ...]:

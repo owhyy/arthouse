@@ -5,6 +5,8 @@
 # pyright: reportUninitializedInstanceVariable=false
 
 import csv
+import html
+import re
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -17,6 +19,26 @@ MEDIA_LABELS = {"music": "Music", "film": "Films", "book": "Books"}
 
 class Base(DeclarativeBase):
     pass
+
+
+def normalize_title(title: str) -> str:
+    """Lowercase, strip punctuation — used to match titles across exports."""
+    return re.sub(r"[^a-z0-9 ]+", "", title.lower()).strip()
+
+
+_TAG = re.compile(r"<[^>]+>")
+_BREAK = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_BLANK_LINES = re.compile(r"\n{3,}")
+
+
+def clean_review(text: str) -> str | None:
+    """Normalize review HTML (Goodreads) into plain text with paragraphs."""
+    if not text.strip():
+        return None
+    text = _BREAK.sub("\n", text)
+    text = html.unescape(_TAG.sub("", text))
+    text = _BLANK_LINES.sub("\n\n", text)
+    return text.strip() or None
 
 
 def score_str(rating: float) -> str:
@@ -44,6 +66,7 @@ class Item(Base):
     rating: Mapped[float]  # normalized to 0-5
     rating_native: Mapped[str]
     rated_on: Mapped[date | None]
+    review: Mapped[str | None]
 
     @property
     def score(self) -> str:
@@ -103,6 +126,7 @@ def _parse_letterboxd(path: Path) -> list[Item]:
                 rating=float(rating),
                 rating_native=rating,
                 rated_on=date.fromisoformat(row["Date"]) if row["Date"].strip() else None,
+                review=None,
             )
         )
     return items
@@ -130,6 +154,7 @@ def _parse_rym(path: Path) -> list[Item]:
                 rating=int(rating) / 2,
                 rating_native=f"{rating}/10",
                 rated_on=None,
+                review=clean_review(row.get("Review", "")),
             )
         )
     return items
@@ -159,9 +184,31 @@ def _parse_goodreads(path: Path) -> list[Item]:
                 rating=float(rating),
                 rating_native=rating,
                 rated_on=(date(*map(int, rated_on.split("/"))) if rated_on else None),
+                review=clean_review(row.get("My Review", "")),
             )
         )
     return items
+
+
+def _letterboxd_reviews(path: Path) -> dict[tuple[str, int | None], str]:
+    """Review text keyed by (normalized title, year).
+
+    Letterboxd's reviews export uses different short-link URIs than an older
+    ratings export (the format changed), so the URI cannot join them.
+    """
+    if not path.is_file():
+        return {}
+    reviews: dict[tuple[str, int | None], str] = {}
+    for row in _read_csv(path):
+        review = clean_review(row.get("Review", ""))
+        if review is None:
+            continue
+        year = row.get("Year", "").strip()
+        key = (normalize_title(row["Name"]), int(year) if year.isdigit() else None)
+        previous = reviews.get(key)
+        # Several viewings can each carry a review; keep them all.
+        reviews[key] = f"{previous}\n\n{review}" if previous else review
+    return reviews
 
 
 def build_db(engine: Engine, data_dir: Path) -> int:
@@ -182,6 +229,12 @@ def build_db(engine: Engine, data_dir: Path) -> int:
         for path in paths:
             if path.is_file():
                 items.extend(parse(path))
+
+    # Letterboxd keeps review text in a separate export file.
+    reviews = _letterboxd_reviews(data_dir / "letterboxd/reviews.csv")
+    for item in items:
+        if item.source == "letterboxd" and item.review is None:
+            item.review = reviews.get((normalize_title(item.title), item.year))
 
     # Only the export-derived items table is rebuilt; enrichment tables
     # (film_meta, film_genre) persist across restarts.

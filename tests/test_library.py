@@ -2,22 +2,12 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
-import pytest
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
 
 from arthouse.deps import get_db
 from arthouse.library import build_db, query_item, query_items
 from arthouse.main import app
-
-FIXTURES = Path(__file__).parent / "fixtures"
-
-
-@pytest.fixture
-def library_db(tmp_path: Path) -> Engine:
-    engine = create_engine(f"sqlite:///{tmp_path / 'library.db'}")
-    build_db(engine, FIXTURES)
-    return engine
 
 
 def _override_db(engine: Engine) -> None:

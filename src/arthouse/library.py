@@ -5,7 +5,7 @@
 # pyright: reportUninitializedInstanceVariable=false
 
 import csv
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from sqlalchemy import Engine, select
@@ -48,6 +48,31 @@ class Item(Base):
     @property
     def score(self) -> str:
         return score_str(self.rating)
+
+
+class FilmMeta(Base):
+    """TMDB enrichment for a film; keyed by platform id so it survives rebuilds."""
+
+    __tablename__: str = "film_meta"
+
+    source: Mapped[str] = mapped_column(primary_key=True)
+    source_id: Mapped[str] = mapped_column(primary_key=True)
+    tmdb_id: Mapped[int]
+    overview: Mapped[str]
+    poster_path: Mapped[str | None]
+    matched_title: Mapped[str]
+    matched_year: Mapped[int | None]
+    enriched_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+
+
+class FilmGenre(Base):
+    """One TMDB genre tag per enriched film."""
+
+    __tablename__: str = "film_genre"
+
+    source: Mapped[str] = mapped_column(primary_key=True)
+    source_id: Mapped[str] = mapped_column(primary_key=True)
+    tag: Mapped[str] = mapped_column(primary_key=True)
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
@@ -158,7 +183,9 @@ def build_db(engine: Engine, data_dir: Path) -> int:
             if path.is_file():
                 items.extend(parse(path))
 
-    Base.metadata.drop_all(engine)
+    # Only the export-derived items table is rebuilt; enrichment tables
+    # (film_meta, film_genre) persist across restarts.
+    Base.metadata.tables["items"].drop(engine, checkfirst=True)
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         session.add_all(items)

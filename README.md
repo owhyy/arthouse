@@ -38,6 +38,26 @@ At startup the app parses all CSVs it finds and (re)builds `data/library.db`
 wantlist, Goodreads unrated or to-read) are skipped. Re-export and restart to
 refresh.
 
+### Film enrichment (TMDB)
+
+Films are enriched with TMDB metadata — synopsis, poster path, and genres — so
+they can feed the recommender. Set `ARTHOUSE_TMDB_API_KEY` (v3 key or v4 read
+token), then run the enrichment once:
+
+```bash
+uv run python -m arthouse.enrich            # all not-yet-enriched films
+uv run python -m arthouse.enrich --limit 5  # small batch
+```
+
+Matching is strict: normalized exact title (or TMDB `original_title`) with a
+±1-year tolerance; very long titles retry with the part before the first comma.
+Anything else is reported as unmatched rather than guessed — wrong genres are
+worse than missing ones. Results live in `film_meta` / `film_genre`, keyed by
+`(source, source_id)`, so restarting the app (which rebuilds only `items`)
+never discards them; re-runs skip already-enriched films. TV entries from the
+Letterboxd export (series, miniseries) have no TMDB movie match and stay
+unmatched.
+
 ## Setup
 
 ```bash

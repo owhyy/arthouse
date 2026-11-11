@@ -1,9 +1,26 @@
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest
+from sqlalchemy import Engine, create_engine
 
+from arthouse.library import build_db
 from arthouse.main import app
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture
+def fixtures_dir() -> Path:
+    return FIXTURES
+
+
+@pytest.fixture
+def library_db(tmp_path: Path) -> Engine:
+    engine = create_engine(f"sqlite:///{tmp_path / 'library.db'}")
+    build_db(engine, FIXTURES)
+    return engine
 
 
 @pytest.fixture

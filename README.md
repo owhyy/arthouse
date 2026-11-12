@@ -97,6 +97,26 @@ The library filter reads the same derived tables. The app rebuilds them at
 startup, and `python -m arthouse.enrich` rebuilds them after each run, so the
 detail page and filter never serve a stale vocabulary.
 
+### Collaborative similarity (MovieLens)
+
+`datasets/` (git-ignored) can hold the MovieLens exports (`ratings*.csv`,
+`links.csv`) alongside the TMDB dump. Films join MovieLens through
+`film_meta.tmdb_id` → `links.csv` (`tmdbId` → `movieId`); nothing is written to
+the database. Neighbours are adjusted-cosine item similarities (ratings centred
+on each user's mean), computed only between films already in the library, so
+they are directly comparable with the content kNN:
+
+```bash
+uv run python -m arthouse.collab --title "Seven Samurai" --compare
+uv run python -m arthouse.collab --ratings datasets/ratings.csv --title "In the Mood for Love"
+```
+
+The default is `ratings_small.csv` (671 users; 182 of the 215 linked library
+films rated) and runs instantly. The full `ratings.csv` (26M ratings, 270,896
+users) covers 215/215 films and takes about 53 s; only ratings for library
+films are kept in memory. `--min-overlap` (default 5) sets the minimum number
+of users who rated both films.
+
 ## Setup
 
 ```bash
@@ -144,6 +164,7 @@ deps.py          # Jinja2Templates singleton, SQLAlchemy session dependency
 assets.py        # content-hashed asset URLs (`asset()` template global)
 library.py       # ORM model, platform CSV parsers, SQLite build/queries
 descriptors.py   # keyword normalization, facets, TF-IDF content kNN
+collab.py        # MovieLens adjusted-cosine item-item CF baseline
 routes/pages.py  # HTML routes only
 templates/         # Jinja2: base.html (navbar), index.html, library.html, library_detail.html
 static/            # css/app.src.css (Tailwind input) → css/app.css (committed build)

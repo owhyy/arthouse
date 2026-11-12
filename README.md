@@ -30,7 +30,9 @@ books show the author and music the artist.
 On the Films tab, a facet-grouped descriptor filter narrows the grid
 (`?descriptor=…`); descriptor chips on film detail pages link to the same
 filtered view. The select lists the 30 most common descriptors per facet;
-rarer ones stay reachable from a film's chips.
+rarer ones stay reachable from a film's chips. While a title search or
+descriptor filter is active, the active tab's count shows the number of
+matching items; the other tabs keep their library totals.
 Ratings are shown as a unified 0–10 score (one platform scale that maps all
 three losslessly: RYM ÷1, Letterboxd stars ×2, Goodreads quarters ×2). Put the
 exports in

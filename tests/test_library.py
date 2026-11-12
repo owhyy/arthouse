@@ -1,3 +1,4 @@
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -223,9 +224,13 @@ async def test_library_filters_films_by_descriptor(
     assert unique.status_code == 200
     assert "Fixture Film A" in unique.text
     assert "Fixture Film B" not in unique.text
+    # The active tab counts what is on screen; other tabs keep library totals.
+    assert re.search(r"Films\s*<span[^>]*>1</span>", unique.text)
+    assert re.search(r"Music\s*<span[^>]*>2</span>", unique.text)
     assert combined.status_code == 200
     assert "Fixture Film B" in combined.text
     assert "Fixture Film A" not in combined.text
+    assert re.search(r"Films\s*<span[^>]*>1</span>", combined.text)
 
 
 async def test_descriptor_filter_is_film_only(
@@ -387,6 +392,7 @@ async def test_search_filters_titles_in_the_active_tab(
     assert films.status_code == 200
     assert "Fixture Film A" in films.text
     assert "Fixture Film B" not in films.text
+    assert re.search(r"Films\s*<span[^>]*>1</span>", films.text)
     assert "No titles match" in music.text  # search does not cross tabs
 
 

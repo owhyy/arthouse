@@ -71,11 +71,14 @@ async def library(
         search=search or None,
         descriptor=selected or None,
     )
+    filtered = bool(search or selected)
     tabs = [
         {
             "key": media,
             "label": MEDIA_LABELS[media],
-            "count": counts[media],
+            # While filtering, the active tab shows how many items are on screen;
+            # the other tabs keep their library totals.
+            "count": len(items) if filtered and media == tab else counts[media],
             "active": media == tab,
         }
         for media in MEDIA_ORDER

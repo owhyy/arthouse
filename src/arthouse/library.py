@@ -7,14 +7,16 @@
 import csv
 import html
 import re
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from sqlalchemy import Engine, inspect, select, text
+from sqlalchemy import Engine, and_, func, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 MEDIA_ORDER = ("music", "film", "book")
 MEDIA_LABELS = {"music": "Music", "film": "Films", "book": "Books"}
+FACET_ORDER = ("theme", "mood", "style", "setting", "production")
 
 
 class Base(DeclarativeBase):
@@ -298,16 +300,74 @@ def build_db(engine: Engine, data_dir: Path) -> int:
 
 
 def query_items(
-    db: Session, media_type: str | None = None, search: str | None = None
+    db: Session,
+    media_type: str | None = None,
+    search: str | None = None,
+    descriptor: str | None = None,
 ) -> list[Item]:
     """Rated items, newest rating first; `search` matches the title only."""
     stmt = select(Item)
     if search:
         stmt = stmt.where(Item.title.ilike(f"%{search}%"))
+    if descriptor:
+        stmt = stmt.join(
+            ItemDescriptor,
+            and_(
+                ItemDescriptor.source == Item.source,
+                ItemDescriptor.source_id == Item.source_id,
+            ),
+        ).where(ItemDescriptor.name == descriptor)
     stmt = stmt.order_by(Item.rating.desc(), Item.title.collate("nocase"))
     if media_type is not None:
         stmt = stmt.where(Item.media_type == media_type)
     return list(db.scalars(stmt))
+
+
+@dataclass(frozen=True)
+class DescriptorOption:
+    name: str
+    facet: str
+    count: int
+
+
+def query_descriptor_options(
+    db: Session, min_count: int = 2, per_facet: int = 30
+) -> list[tuple[str, list[DescriptorOption]]]:
+    """Top descriptors per facet; rare ones stay reachable via detail chips."""
+    rows = db.execute(
+        select(Descriptor.name, Descriptor.facet, func.count(ItemDescriptor.name))
+        .join(ItemDescriptor, ItemDescriptor.name == Descriptor.name)
+        .join(
+            Item,
+            and_(
+                Item.source == ItemDescriptor.source,
+                Item.source_id == ItemDescriptor.source_id,
+            ),
+        )
+        .where(Item.media_type == "film")
+        .group_by(Descriptor.name, Descriptor.facet)
+        .having(func.count(ItemDescriptor.name) >= min_count)
+        .order_by(Descriptor.facet, func.count(ItemDescriptor.name).desc(), Descriptor.name)
+    ).all()
+    groups: dict[str, list[DescriptorOption]] = {}
+    for name, facet, count in rows:
+        groups.setdefault(facet, []).append(DescriptorOption(name, facet, count))
+    return [(facet, groups[facet][:per_facet]) for facet in FACET_ORDER if facet in groups]
+
+
+def query_item_descriptor_groups(
+    db: Session, source: str, source_id: str
+) -> list[tuple[str, list[str]]]:
+    """Canonical descriptors for one film, grouped by facet and sorted."""
+    rows = db.execute(
+        select(Descriptor.facet, Descriptor.name)
+        .join(ItemDescriptor, ItemDescriptor.name == Descriptor.name)
+        .where(ItemDescriptor.source == source, ItemDescriptor.source_id == source_id)
+    ).all()
+    groups: dict[str, list[str]] = {}
+    for facet, name in rows:
+        groups.setdefault(facet, []).append(name)
+    return [(facet, sorted(groups[facet])) for facet in FACET_ORDER if facet in groups]
 
 
 def query_item(db: Session, item_id: int) -> Item | None:
@@ -327,17 +387,6 @@ def query_film_meta(db: Session, source: str, source_id: str) -> tuple[FilmMeta,
         )
     )
     return meta, genres
-
-
-def query_film_keywords(db: Session, source: str, source_id: str) -> list[str]:
-    """TMDB keyword descriptors for one film, sorted alphabetically."""
-    return list(
-        db.scalars(
-            select(FilmKeyword.keyword)
-            .where(FilmKeyword.source == source, FilmKeyword.source_id == source_id)
-            .order_by(FilmKeyword.keyword)
-        )
-    )
 
 
 def query_film_directors(db: Session) -> dict[str, str]:

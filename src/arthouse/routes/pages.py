@@ -3,15 +3,17 @@
 from fastapi import APIRouter, HTTPException, Request
 
 from arthouse.deps import DbSession, templates
+from arthouse.descriptors import canonical
 from arthouse.library import (
     MEDIA_LABELS,
     MEDIA_ORDER,
     FilmMeta,
+    query_descriptor_options,
     query_film_directors,
     query_film_genres,
-    query_film_keywords,
     query_film_meta,
     query_item,
+    query_item_descriptor_groups,
     query_items,
 )
 
@@ -30,12 +32,12 @@ async def library_detail(request: Request, item_id: int, db: DbSession):
         raise HTTPException(status_code=404)
     film_meta: FilmMeta | None = None
     genres: list[str] = []
-    keywords: list[str] = []
+    descriptor_groups: list[tuple[str, list[str]]] = []
     if item.media_type == "film":
         enriched = query_film_meta(db, item.source, item.source_id)
         if enriched is not None:
             film_meta, genres = enriched
-            keywords = query_film_keywords(db, item.source, item.source_id)
+        descriptor_groups = query_item_descriptor_groups(db, item.source, item.source_id)
     return templates.TemplateResponse(
         request,
         "library_detail.html",
@@ -44,19 +46,31 @@ async def library_detail(request: Request, item_id: int, db: DbSession):
             "item": item,
             "film_meta": film_meta,
             "genres": genres,
-            "keywords": keywords,
+            "descriptor_groups": descriptor_groups,
         },
     )
 
 
 @router.get("/library")
-async def library(request: Request, db: DbSession, tab: str = "music", q: str = ""):
+async def library(
+    request: Request,
+    db: DbSession,
+    tab: str = "music",
+    q: str = "",
+    descriptor: str = "",
+):
     if tab not in MEDIA_ORDER:
         raise HTTPException(status_code=404)
     search = q.strip()
+    selected = canonical(descriptor) if tab == "film" and descriptor.strip() else ""
     all_items = query_items(db)
     counts = {media: sum(1 for i in all_items if i.media_type == media) for media in MEDIA_ORDER}
-    items = query_items(db, media_type=tab, search=search or None)
+    items = query_items(
+        db,
+        media_type=tab,
+        search=search or None,
+        descriptor=selected or None,
+    )
     tabs = [
         {
             "key": media,
@@ -66,6 +80,8 @@ async def library(request: Request, db: DbSession, tab: str = "music", q: str = 
         }
         for media in MEDIA_ORDER
     ]
+    descriptor_groups = query_descriptor_options(db) if tab == "film" else []
+    descriptor_names = {option.name for _, options in descriptor_groups for option in options}
     return templates.TemplateResponse(
         request,
         "library.html",
@@ -73,6 +89,9 @@ async def library(request: Request, db: DbSession, tab: str = "music", q: str = 
             "title": f"Library · {MEDIA_LABELS[tab]}",
             "tab": tab,
             "q": search,
+            "descriptor": selected,
+            "descriptor_groups": descriptor_groups,
+            "descriptor_listed": selected in descriptor_names,
             "tabs": tabs,
             "items": items,
             "film_directors": query_film_directors(db) if tab == "film" else {},

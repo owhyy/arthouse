@@ -10,7 +10,7 @@
     {% if item.year %}{% if credit %} · {% endif %}{{ item.year }}{% endif %}
   </p>
 
-  {% if genres or keywords %}
+  {% if genres or descriptor_groups %}
     <div class="mt-4 space-y-3">
       {% if genres %}
         <div>
@@ -22,14 +22,22 @@
           </ul>
         </div>
       {% endif %}
-      {% if keywords %}
+      {% if descriptor_groups %}
         <div>
           <h2 class="text-sm font-semibold tracking-wide text-muted uppercase">Descriptors</h2>
-          <ul class="mt-2 flex flex-wrap gap-2">
-            {% for keyword in keywords %}
-              <li class="rounded-full border border-line px-3 py-1 text-xs text-muted">{{ keyword }}</li>
-            {% endfor %}
-          </ul>
+          {% for facet, names in descriptor_groups %}
+            <div class="mt-2">
+              <h3 class="text-xs font-medium tracking-wide text-muted uppercase">{{ facet }}</h3>
+              <ul class="mt-1 flex flex-wrap gap-2">
+                {% for name in names %}
+                  <li>
+                    <a href="{{ url_for('library') }}?tab=film&amp;descriptor={{ name|urlencode }}"
+                       class="rounded-full border border-line px-3 py-1 text-xs text-muted hover:border-accent hover:text-ink">{{ name }}</a>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endfor %}
           <p class="mt-2 text-xs text-muted">Descriptors via TMDB keywords</p>
         </div>
       {% endif %}

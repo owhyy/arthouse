@@ -10,6 +10,7 @@ from sqlalchemy import create_engine
 from arthouse.assets import asset_url, build_asset_map
 from arthouse.config import BASE_DIR, Settings, get_settings
 from arthouse.deps import templates
+from arthouse.descriptors import rebuild_descriptors
 from arthouse.library import build_db
 from arthouse.routes import pages
 
@@ -31,6 +32,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # echo=debug prints every SQL statement to stderr (the server terminal).
     app.state.engine = create_engine(f"sqlite:///{data_dir / 'library.db'}", echo=settings.debug)
     build_db(app.state.engine, data_dir)
+    # Descriptors are derived from film_keyword; rebuild so the detail page
+    # and the library filter never serve a stale vocabulary.
+    rebuild_descriptors(app.state.engine)
 
     templates.env.globals["asset"] = partial(  # pyright: ignore[reportArgumentType]
         asset_url, static_dir, build_asset_map(static_dir), debug=settings.debug

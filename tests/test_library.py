@@ -6,6 +6,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 
 from arthouse.deps import get_db
+from arthouse.descriptors import rebuild_descriptors
 from arthouse.library import (
     FilmGenre,
     FilmKeyword,
@@ -43,6 +44,7 @@ def _enrich_film(
         for keyword in keywords or []:
             db.add(FilmKeyword(source="letterboxd", source_id=source_id, keyword=keyword))
         db.commit()
+    rebuild_descriptors(engine)
 
 
 def _override_db(engine: Engine) -> None:
@@ -154,6 +156,8 @@ async def test_detail_page_shows_synopsis_and_genres(
     assert "Descriptors" in response.text
     assert "slow cinema" in response.text
     assert "loneliness" in response.text
+    assert "descriptor=slow%20cinema" in response.text  # chips filter the library
+    assert "descriptor=loneliness" in response.text
 
 
 async def test_detail_page_omits_synopsis_when_unenriched(
@@ -182,6 +186,59 @@ async def test_film_grid_shows_genre_tags(client: httpx.AsyncClient, library_db:
     assert "Drama" in response.text
     assert "Fixture Director" in response.text  # director stands in for creator
     assert "A fixture synopsis." not in response.text  # synopsis is detail-only
+
+
+async def test_library_filters_films_by_descriptor(
+    client: httpx.AsyncClient, library_db: Engine
+) -> None:
+    _enrich_film(
+        library_db,
+        "https://boxd.it/aaa",
+        "A fixture synopsis.",
+        ["Drama"],
+        keywords=["neo-noir", "melancholy"],
+    )
+    _enrich_film(
+        library_db,
+        "https://boxd.it/bbb",
+        "Another synopsis.",
+        ["Drama"],
+        keywords=["neo-noir"],
+    )
+    _override_db(library_db)
+    try:
+        shared = await client.get("/library", params={"tab": "film", "descriptor": "neo-noir"})
+        unique = await client.get("/library", params={"tab": "film", "descriptor": "melancholy"})
+        combined = await client.get(
+            "/library",
+            params={"tab": "film", "q": "film b", "descriptor": "neo-noir"},
+        )
+    finally:
+        _clear_override()
+    assert shared.status_code == 200
+    assert "Fixture Film A" in shared.text
+    assert "Fixture Film B" in shared.text
+    assert 'id="descriptor-filter"' in shared.text
+    assert "neo-noir (2)" in shared.text
+    assert unique.status_code == 200
+    assert "Fixture Film A" in unique.text
+    assert "Fixture Film B" not in unique.text
+    assert combined.status_code == 200
+    assert "Fixture Film B" in combined.text
+    assert "Fixture Film A" not in combined.text
+
+
+async def test_descriptor_filter_is_film_only(
+    client: httpx.AsyncClient, library_db: Engine
+) -> None:
+    _override_db(library_db)
+    try:
+        response = await client.get("/library", params={"tab": "music", "descriptor": "neo-noir"})
+    finally:
+        _clear_override()
+    assert response.status_code == 200
+    assert "Fixture Album" in response.text
+    assert 'id="descriptor-filter"' not in response.text
 
 
 async def test_detail_page_omits_empty_review(

@@ -17,6 +17,7 @@ from sqlalchemy import Engine, create_engine, func, select
 from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
+from arthouse.descriptors import rebuild_descriptors
 from arthouse.library import FilmGenre, FilmKeyword, FilmMeta, Item, normalize_title
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
@@ -347,6 +348,7 @@ def main() -> None:
         raise SystemExit("ARTHOUSE_TMDB_API_KEY is not set (see README)")
     with TmdbClient(settings.tmdb_api_key) as client:
         stats = enrich_films(engine, client, limit=cast(int | None, args.limit))
+    rebuild_descriptors(engine)  # keep the derived vocabulary in sync
     print(
         f"matched: {stats.matched}, skipped: {stats.skipped}, "
         + f"directors backfilled: {stats.backfilled}, "

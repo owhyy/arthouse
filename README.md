@@ -24,9 +24,13 @@ the form also works as a plain GET). Every entry links to a detail page with the
 rating, the platform it came from, and your review when the export has one
 (Letterboxd `reviews.csv`, RYM `Review`, Goodreads `My Review`; HTML is
 stripped and paragraphs preserved). Enriched films also show TMDB genre tags
-(on cards and the detail page), the TMDB synopsis and keyword descriptors
-(detail page only), and the director in the same credit line where books show
-the author and music the artist.
+(on cards and the detail page), the TMDB synopsis and faceted keyword
+descriptors (detail page only), and the director in the same credit line where
+books show the author and music the artist.
+On the Films tab, a facet-grouped descriptor filter narrows the grid
+(`?descriptor=…`); descriptor chips on film detail pages link to the same
+filtered view. The select lists the 30 most common descriptors per facet;
+rarer ones stay reachable from a film's chips.
 Ratings are shown as a unified 0–10 score (one platform scale that maps all
 three losslessly: RYM ÷1, Letterboxd stars ×2, Goodreads quarters ×2). Put the
 exports in
@@ -88,6 +92,10 @@ fewer than 3 films are ignored by default (`--min-df`). Ask for specific films:
 ```bash
 uv run python -m arthouse.descriptors --title "Seven Samurai" --title "Aftersun"
 ```
+
+The library filter reads the same derived tables. The app rebuilds them at
+startup, and `python -m arthouse.enrich` rebuilds them after each run, so the
+detail page and filter never serve a stale vocabulary.
 
 ## Setup
 

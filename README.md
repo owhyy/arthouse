@@ -27,13 +27,17 @@ stripped and paragraphs preserved). Enriched films also show TMDB genre tags
 (on cards and the detail page), the TMDB synopsis and faceted keyword
 descriptors (detail page only), and the director in the same credit line where
 books show the author and music the artist.
-On the Films tab, a facet-grouped descriptor filter narrows the grid
-(`?descriptor=…`); descriptor chips on film detail pages link to the same
-filtered view. The select lists the 30 most common descriptors per facet;
-rarer ones stay reachable from a film's chips. While a title search or
-descriptor filter is active, the active tab's count shows the number of
-matching items; the other tabs keep their library totals. The grid shows 60
-items per page and pagination keeps the active search and descriptor filter.
+On the Films tab, a facet-grouped selector narrows the grid by one or more
+descriptors (`?descriptor=…&descriptor=…`), combined with **AND**: a film must
+carry every selected descriptor. Pick a descriptor, press **+**, and it
+accumulates as a removable chip (Alpine.js); every change re-renders the grid
+through htmx. The selector lists the 30 most common descriptors per facet, while
+rarer ones stay reachable from a film's detail chips. Without JavaScript, a
+`<noscript>` multi-select offers the same filter. Descriptor chips on film detail
+pages link to the same filtered view. While a title search or descriptor filter
+is active, the active tab's count shows the number of matching items; the other
+tabs keep their library totals. The grid shows 60 items per page and pagination
+keeps the active search and every selected descriptor.
 Ratings are shown as a unified 0–10 score (one platform scale that maps all
 three losslessly: RYM ÷1, Letterboxd stars ×2, Goodreads quarters ×2). Put the
 exports in
@@ -171,7 +175,7 @@ collab.py        # MovieLens adjusted-cosine item-item CF baseline
 routes/pages.py  # HTML routes only
 templates/         # Jinja2: base.html (navbar), index.html, library.html, library_detail.html
 static/            # css/app.src.css (Tailwind input) → css/app.css (committed build)
-static/js/         # vendored htmx 4.0.1 (tab switching; app works without it)
+static/js/         # vendored htmx 4.0.1 + Alpine 3.17.5, descriptorPicker component
 tests/             # httpx ASGITransport; synthetic fixtures; no sockets, no network
 data/              # git-ignored: personal exports + generated library.db
 ```

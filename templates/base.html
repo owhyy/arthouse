@@ -6,6 +6,8 @@
     <title>{% block title %}{{ title or "arthouse" }}{% endblock %}</title>
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
     <script src="{{ asset('js/htmx.min.js') }}" defer></script>
+    <script src="{{ asset('js/descriptors.js') }}" defer></script>
+    <script src="{{ asset('js/alpine.min.js') }}" defer></script>
   </head>
   <body class="flex min-h-screen flex-col bg-paper font-sans text-ink antialiased">
     <header class="border-b border-line">

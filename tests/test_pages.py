@@ -8,6 +8,8 @@ async def test_index_renders_blank_page_with_navbar(client: httpx.AsyncClient) -
     assert "<nav" in response.text
     assert "/library" in response.text  # url_for emits absolute URLs
     assert "htmx.min.js" in response.text  # interactive tabs ship with htmx
+    assert "alpine.min.js" in response.text  # descriptor chips component
+    assert "descriptors.js" in response.text
     assert "defer" in response.text
 
 

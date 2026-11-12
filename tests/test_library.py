@@ -422,6 +422,90 @@ async def test_pagination_preserves_the_descriptor_filter(
     assert "&amp;page=2&amp;descriptor=neo-noir" in response.text
 
 
+async def test_library_combines_descriptors_with_and(
+    client: httpx.AsyncClient, library_db: Engine
+) -> None:
+    _enrich_film(
+        library_db,
+        "https://boxd.it/aaa",
+        "A.",
+        ["Drama"],
+        keywords=["neo-noir", "melancholy"],
+    )
+    _enrich_film(library_db, "https://boxd.it/bbb", "B.", ["Drama"], keywords=["neo-noir"])
+    _override_db(library_db)
+    try:
+        both = await client.get(
+            "/library",
+            params=[("tab", "film"), ("descriptor", "neo-noir"), ("descriptor", "melancholy")],
+        )
+        one = await client.get(
+            "/library",
+            params=[("tab", "film"), ("descriptor", "neo-noir"), ("descriptor", "neo-noir")],
+        )
+    finally:
+        _clear_override()
+    assert both.status_code == 200
+    assert "Fixture Film A" in both.text
+    assert "Fixture Film B" not in both.text  # AND: B lacks "melancholy"
+    assert "Fixture Film A" in one.text
+    assert "Fixture Film B" in one.text  # repeated descriptors dedupe to one
+
+
+async def test_descriptor_filter_accumulates_selected_chips(
+    client: httpx.AsyncClient, library_db: Engine
+) -> None:
+    for source_id in ("https://boxd.it/aaa", "https://boxd.it/bbb"):
+        _enrich_film(
+            library_db,
+            source_id,
+            "A.",
+            ["Drama"],
+            keywords=["neo-noir", "melancholy"],
+        )
+    _override_db(library_db)
+    try:
+        plain = await client.get("/library", params={"tab": "film"})
+        filtered = await client.get("/library", params={"tab": "film", "descriptor": "neo-noir"})
+        rare = await client.get("/library", params={"tab": "film", "descriptor": "rare one-off"})
+    finally:
+        _clear_override()
+    assert 'x-data="descriptorPicker()"' in plain.text
+    assert 'id="descriptor-filter"' in plain.text
+    assert 'id="descriptor-state"' in plain.text
+    assert '"selected": []' in plain.text
+    assert 'aria-label="Add descriptor"' in plain.text
+    assert "selected.includes($el.dataset.name)" in plain.text  # added ones disable
+    assert 'placeholder="Add a descriptor"' not in plain.text  # a selector, not a search box
+    assert "x-model" not in plain.text
+    assert '<option value="neo-noir"' in plain.text
+    assert '<option value="melancholy"' in plain.text
+    assert '"selected": ["neo-noir"]' in filtered.text
+    assert '<input type="hidden" name="descriptor" value="neo-noir">' in filtered.text
+    # A descriptor outside the top 30 per facet still survives a reload.
+    assert "rare one-off" in rare.text
+    assert '<option value="rare one-off" selected>' in rare.text
+
+
+async def test_pagination_preserves_every_descriptor(
+    client: httpx.AsyncClient, library_db: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for source_id in ("https://boxd.it/aaa", "https://boxd.it/bbb"):
+        _enrich_film(library_db, source_id, "A.", ["Drama"], keywords=["neo-noir", "melancholy"])
+    monkeypatch.setattr(pages, "PAGE_SIZE", 1)
+    _override_db(library_db)
+    try:
+        response = await client.get(
+            "/library",
+            params=[("tab", "film"), ("descriptor", "neo-noir"), ("descriptor", "melancholy")],
+        )
+    finally:
+        _clear_override()
+    assert response.status_code == 200
+    assert "Page 1 of 2" in response.text
+    assert "&amp;page=2&amp;descriptor=neo-noir&amp;descriptor=melancholy" in response.text
+
+
 async def test_search_filters_titles_in_the_active_tab(
     client: httpx.AsyncClient, library_db: Engine
 ) -> None:

@@ -51,6 +51,9 @@ async def library_detail(request: Request, item_id: int, db: DbSession):
     )
 
 
+PAGE_SIZE = 60
+
+
 @router.get("/library")
 async def library(
     request: Request,
@@ -58,6 +61,7 @@ async def library(
     tab: str = "music",
     q: str = "",
     descriptor: str = "",
+    page: int = 1,
 ):
     if tab not in MEDIA_ORDER:
         raise HTTPException(status_code=404)
@@ -65,20 +69,23 @@ async def library(
     selected = canonical(descriptor) if tab == "film" and descriptor.strip() else ""
     all_items = query_items(db)
     counts = {media: sum(1 for i in all_items if i.media_type == media) for media in MEDIA_ORDER}
-    items = query_items(
+    matches = query_items(
         db,
         media_type=tab,
         search=search or None,
         descriptor=selected or None,
     )
+    page_count = max(1, (len(matches) + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = min(max(page, 1), page_count)
+    items = matches[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
     filtered = bool(search or selected)
     tabs = [
         {
             "key": media,
             "label": MEDIA_LABELS[media],
-            # While filtering, the active tab shows how many items are on screen;
+            # While filtering, the active tab shows the number of matches;
             # the other tabs keep their library totals.
-            "count": len(items) if filtered and media == tab else counts[media],
+            "count": len(matches) if filtered and media == tab else counts[media],
             "active": media == tab,
         }
         for media in MEDIA_ORDER
@@ -96,6 +103,8 @@ async def library(
             "descriptor_groups": descriptor_groups,
             "descriptor_listed": selected in descriptor_names,
             "tabs": tabs,
+            "page": page,
+            "page_count": page_count,
             "items": items,
             "film_directors": query_film_directors(db) if tab == "film" else {},
             "film_genres": query_film_genres(db) if tab == "film" else {},

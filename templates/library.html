@@ -135,6 +135,49 @@
           </li>
         {% endfor %}
       </ul>
+      {% if page_count > 1 %}
+        {% set page_base = url_for('library') ~ '?tab=' ~ tab ~ '&page=' %}
+        {% set page_suffix = '' %}
+        {% if q %}{% set page_suffix = page_suffix ~ '&q=' ~ (q|urlencode) %}{% endif %}
+        {% if descriptor %}{% set page_suffix = page_suffix ~ '&descriptor=' ~ (descriptor|urlencode) %}{% endif %}
+        <nav class="mt-6 flex items-center justify-center gap-1" aria-label="Pagination">
+          <span class="sr-only">Page {{ page }} of {{ page_count }}</span>
+          {% if page > 1 %}
+            {% set prev_url = page_base ~ (page - 1) ~ page_suffix %}
+            <a href="{{ prev_url }}"
+               hx-get="{{ prev_url }}"
+               hx-target="#library-region"
+               hx-select="#library-region"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               class="rounded border border-line px-3 py-1 text-sm text-muted hover:border-accent hover:text-ink">Previous</a>
+          {% endif %}
+          {% for number in range(1, page_count + 1) %}
+            {% set page_url = page_base ~ number ~ page_suffix %}
+            {% if number == page %}
+              <span class="rounded border border-accent px-3 py-1 text-sm font-medium text-ink" aria-current="page">{{ number }}</span>
+            {% else %}
+              <a href="{{ page_url }}"
+                 hx-get="{{ page_url }}"
+                 hx-target="#library-region"
+                 hx-select="#library-region"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="rounded border border-line px-3 py-1 text-sm text-muted hover:border-accent hover:text-ink">{{ number }}</a>
+            {% endif %}
+          {% endfor %}
+          {% if page < page_count %}
+            {% set next_url = page_base ~ (page + 1) ~ page_suffix %}
+            <a href="{{ next_url }}"
+               hx-get="{{ next_url }}"
+               hx-target="#library-region"
+               hx-select="#library-region"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               class="rounded border border-line px-3 py-1 text-sm text-muted hover:border-accent hover:text-ink">Next</a>
+          {% endif %}
+        </nav>
+      {% endif %}
     {% elif q or descriptor %}
       <p class="mt-4 text-sm text-muted">
         No titles match

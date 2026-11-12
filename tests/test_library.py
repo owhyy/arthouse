@@ -3,6 +3,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
+import pytest
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,7 @@ from arthouse.library import (
     query_items,
 )
 from arthouse.main import app
+from arthouse.routes import pages
 
 
 def _enrich_film(
@@ -378,6 +380,46 @@ async def test_library_tabs_use_htmx_swap(client: httpx.AsyncClient, library_db:
     assert 'hx-select="#library-region"' in response.text
     assert 'hx-push-url="true"' in response.text
     assert 'id="library-region"' in response.text
+
+
+async def test_library_paginates_the_grid(
+    client: httpx.AsyncClient, library_db: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pages, "PAGE_SIZE", 1)
+    _override_db(library_db)
+    try:
+        first = await client.get("/library", params={"tab": "film", "page": 1})
+        second = await client.get("/library", params={"tab": "film", "page": 2})
+        clamped = await client.get("/library", params={"tab": "film", "page": 99})
+        low = await client.get("/library", params={"tab": "film", "page": 0})
+    finally:
+        _clear_override()
+    titles = ("Fixture Film A", "Fixture Film B")
+    first_titles = {title for title in titles if title in first.text}
+    second_titles = {title for title in titles if title in second.text}
+    assert len(first_titles) == 1
+    assert len(second_titles) == 1
+    assert first_titles != second_titles
+    assert "Page 1 of 2" in first.text
+    assert "Page 2 of 2" in second.text
+    assert "Page 2 of 2" in clamped.text  # out-of-range pages clamp to the last page
+    assert "Page 1 of 2" in low.text
+
+
+async def test_pagination_preserves_the_descriptor_filter(
+    client: httpx.AsyncClient, library_db: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _enrich_film(library_db, "https://boxd.it/aaa", "A.", ["Drama"], keywords=["neo-noir"])
+    _enrich_film(library_db, "https://boxd.it/bbb", "B.", ["Drama"], keywords=["neo-noir"])
+    monkeypatch.setattr(pages, "PAGE_SIZE", 1)
+    _override_db(library_db)
+    try:
+        response = await client.get("/library", params={"tab": "film", "descriptor": "neo-noir"})
+    finally:
+        _clear_override()
+    assert response.status_code == 200
+    assert "Page 1 of 2" in response.text
+    assert "&amp;page=2&amp;descriptor=neo-noir" in response.text
 
 
 async def test_search_filters_titles_in_the_active_tab(

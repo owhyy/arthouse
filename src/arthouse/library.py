@@ -7,7 +7,6 @@
 import csv
 import html
 import re
-from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -304,28 +303,20 @@ def query_items(
     db: Session,
     media_type: str | None = None,
     search: str | None = None,
-    descriptors: Sequence[str] | None = None,
+    descriptor: str | None = None,
 ) -> list[Item]:
-    """Rated items, newest rating first; `search` matches the title only.
-
-    Every descriptor in `descriptors` must be present (AND).
-    """
+    """Rated items, newest rating first; `search` matches the title only."""
     stmt = select(Item)
     if search:
         stmt = stmt.where(Item.title.ilike(f"%{search}%"))
-    names = list(dict.fromkeys(descriptors or []))
-    if names:
-        tagged = (
-            select(ItemDescriptor.source, ItemDescriptor.source_id)
-            .where(ItemDescriptor.name.in_(names))
-            .group_by(ItemDescriptor.source, ItemDescriptor.source_id)
-            .having(func.count(func.distinct(ItemDescriptor.name)) == len(names))
-            .subquery()
-        )
+    if descriptor:
         stmt = stmt.join(
-            tagged,
-            and_(Item.source == tagged.c.source, Item.source_id == tagged.c.source_id),
-        )
+            ItemDescriptor,
+            and_(
+                ItemDescriptor.source == Item.source,
+                ItemDescriptor.source_id == Item.source_id,
+            ),
+        ).where(ItemDescriptor.name == descriptor)
     stmt = stmt.order_by(Item.rating.desc(), Item.title.collate("nocase"))
     if media_type is not None:
         stmt = stmt.where(Item.media_type == media_type)

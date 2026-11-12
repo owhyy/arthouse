@@ -16,9 +16,7 @@
         hx-swap="outerHTML"
         hx-push-url="true">
     <input type="hidden" name="tab" value="{{ tab }}" id="library-tab">
-    <div id="library-descriptors">
-      {% for name in selected %}<input type="hidden" name="descriptor" value="{{ name }}">{% endfor %}
-    </div>
+    <input type="hidden" name="descriptor" value="{{ descriptor }}" id="library-descriptor">
     <input type="search"
            name="q"
            value="{{ q }}"
@@ -41,21 +39,13 @@
     {% if request.headers.get("HX-Request") %}
       {# Keep the search form's hidden fields in sync after a region swap. #}
       <input type="hidden" name="tab" value="{{ tab }}" hx-swap-oob="outerHTML:#library-tab">
-      {# djlint:off H053 #}
-      {# Same id as the search form's container; the two never render together. #}
-      <div id="library-descriptors" hx-swap-oob="outerHTML:#library-descriptors">
-        {% for name in selected %}<input type="hidden" name="descriptor" value="{{ name }}">{% endfor %}
-      </div>
-      {# djlint:on #}
+      <input type="hidden" name="descriptor" value="{{ descriptor }}" hx-swap-oob="outerHTML:#library-descriptor">
     {% endif %}
     <nav class="flex gap-1 border-b border-line" aria-label="Categories">
       {% for t in tabs %}
         {% set tab_url = url_for('library') ~ '?tab=' ~ t['key'] %}
-        {% if t['key'] == 'film' %}
-          {% set tab_url = tab_url ~ filter_query %}
-        {% elif q %}
-          {% set tab_url = tab_url ~ '&q=' ~ (q|urlencode) %}
-        {% endif %}
+        {% if q %}{% set tab_url = tab_url ~ '&q=' ~ (q|urlencode) %}{% endif %}
+        {% if descriptor and t['key'] == 'film' %}{% set tab_url = tab_url ~ '&descriptor=' ~ (descriptor|urlencode) %}{% endif %}
         <a href="{{ tab_url }}"
            hx-get="{{ tab_url }}"
            hx-target="#library-region"
@@ -70,82 +60,49 @@
     </nav>
 
     {% if descriptor_groups %}
-      <script type="application/json" id="descriptor-state">{{ {"selected": selected}|tojson }}</script>
-      <form x-data="descriptorPicker()"
-            x-ref="form"
-            action="{{ url_for('library') }}"
-            method="get"
-            class="mt-4"
-            hx-get="{{ url_for('library') }}"
-            hx-target="#library-region"
-            hx-select="#library-region"
-            hx-swap="outerHTML"
-            hx-push-url="true">
+      <form action="{{ url_for('library') }}" method="get" class="mt-4 flex flex-wrap items-center gap-2">
         <input type="hidden" name="tab" value="film">
         {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
-        <template x-for="name in selected" :key="name">
-          <input type="hidden" name="descriptor" :value="name">
-        </template>
-        <div class="flex flex-wrap items-center gap-2">
-          <label for="descriptor-filter" class="text-sm text-muted">Descriptors</label>
-          <select id="descriptor-filter"
-                  x-ref="select"
-                  class="w-64 rounded border border-line bg-paper px-3 py-2 text-sm focus:border-accent focus:outline-none">
-            {% for facet, options in descriptor_groups %}
-              <optgroup label="{{ facet|capitalize }}">
-                {% for option in options %}
-                  <option value="{{ option.name }}"
-                          data-name="{{ option.name }}"
-                          :disabled="selected.includes($el.dataset.name)">{{ option.name }} ({{ option.count }})</option>
-                {% endfor %}
-              </optgroup>
-            {% endfor %}
-          </select>
-          <button type="button"
-                  @click="add()"
-                  aria-label="Add descriptor"
-                  class="rounded border border-line px-3 py-2 text-sm text-muted hover:border-accent hover:text-ink">+</button>
-          <template x-for="name in selected" :key="name">
-            <span class="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1 text-xs text-muted">
-              <span x-text="name"></span>
-              <button type="button" @click="remove(name)" aria-label="Remove descriptor" class="text-muted hover:text-ink">×</button>
-            </span>
-          </template>
-          {% if selected %}
-            {% set clear_url = url_for('library') ~ '?tab=film' %}
-            {% if q %}{% set clear_url = clear_url ~ '&q=' ~ (q|urlencode) %}{% endif %}
-            <a href="{{ clear_url }}"
-               hx-get="{{ clear_url }}"
-               hx-target="#library-region"
-               hx-select="#library-region"
-               hx-swap="outerHTML"
-               hx-push-url="true"
-               class="text-sm text-muted hover:text-accent hover:underline">Clear</a>
+        <label for="descriptor-filter" class="text-sm text-muted">Descriptor</label>
+        <select id="descriptor-filter"
+                name="descriptor"
+                hx-get="{{ url_for('library') }}"
+                hx-trigger="change"
+                hx-target="#library-region"
+                hx-select="#library-region"
+                hx-swap="outerHTML"
+                hx-push-url="true"
+                hx-include="closest form"
+                class="rounded border border-line bg-paper px-3 py-2 text-sm focus:border-accent focus:outline-none">
+          <option value="">All descriptors</option>
+          {% if descriptor and not descriptor_listed %}
+            <option value="{{ descriptor }}" selected>{{ descriptor }}</option>
           {% endif %}
-        </div>
-        <noscript>
-          {# Without JavaScript the picker is inert; offer a plain multi-select. #}
-          <div class="mt-2 flex flex-wrap items-center gap-2">
-            <label for="descriptor-filter-noscript" class="text-sm text-muted">Descriptors</label>
-            <select id="descriptor-filter-noscript"
-                    name="descriptor"
-                    multiple
-                    size="6"
-                    class="w-64 rounded border border-line bg-paper px-3 py-2 text-sm focus:border-accent focus:outline-none">
-              {% for name in extra_descriptors %}<option value="{{ name }}" selected>{{ name }}</option>{% endfor %}
-              {% for facet, options in descriptor_groups %}
-                <optgroup label="{{ facet|capitalize }}">
-                  {% for option in options %}
-                    <option value="{{ option.name }}" {% if option.name in selected %}selected{% endif %}>{{ option.name }} ({{ option.count }})</option>
-                  {% endfor %}
-                </optgroup>
+          {% for facet, options in descriptor_groups %}
+            <optgroup label="{{ facet|capitalize }}">
+              {% for option in options %}
+                <option value="{{ option.name }}" {% if option.name == descriptor %}selected{% endif %}>{{ option.name }} ({{ option.count }})</option>
               {% endfor %}
-            </select>
-            <button type="submit" class="rounded border border-line px-3 py-2 text-sm text-muted hover:border-accent hover:text-ink">
-              Filter
-            </button>
-          </div>
+            </optgroup>
+          {% endfor %}
+        </select>
+        <noscript>
+          {# htmx submits on change; keep a submit button when JS is off. #}
+          <button type="submit" class="rounded border border-line px-3 py-2 text-sm text-muted hover:border-accent hover:text-ink">
+            Filter
+          </button>
         </noscript>
+        {% if descriptor %}
+          {% set clear_url = url_for('library') ~ '?tab=film' %}
+          {% if q %}{% set clear_url = clear_url ~ '&q=' ~ (q|urlencode) %}{% endif %}
+          <a href="{{ clear_url }}"
+             hx-get="{{ clear_url }}"
+             hx-target="#library-region"
+             hx-select="#library-region"
+             hx-swap="outerHTML"
+             hx-push-url="true"
+             class="text-sm text-muted hover:text-accent hover:underline">Clear</a>
+        {% endif %}
       </form>
     {% endif %}
 
@@ -180,7 +137,9 @@
       </ul>
       {% if page_count > 1 %}
         {% set page_base = url_for('library') ~ '?tab=' ~ tab ~ '&page=' %}
-        {% set page_suffix = filter_query %}
+        {% set page_suffix = '' %}
+        {% if q %}{% set page_suffix = page_suffix ~ '&q=' ~ (q|urlencode) %}{% endif %}
+        {% if descriptor %}{% set page_suffix = page_suffix ~ '&descriptor=' ~ (descriptor|urlencode) %}{% endif %}
         <nav class="mt-6 flex items-center justify-center gap-1" aria-label="Pagination">
           <span class="sr-only">Page {{ page }} of {{ page_count }}</span>
           {% if page > 1 %}
@@ -219,15 +178,12 @@
           {% endif %}
         </nav>
       {% endif %}
-    {% elif q or selected %}
+    {% elif q or descriptor %}
       <p class="mt-4 text-sm text-muted">
         No titles match
         {% if q %}“{{ q }}”{% endif %}
-        {% if q and selected %}with{% endif %}
-        {% if selected %}
-          descriptor{% if selected|length > 1 %}s{% endif %}
-          {% for name in selected %}“{{ name }}”{% if not loop.last %} and {% endif %}{% endfor %}
-        {% endif %}.
+        {% if q and descriptor %}with{% endif %}
+        {% if descriptor %}descriptor “{{ descriptor }}”{% endif %}.
       </p>
     {% else %}
       <p class="mt-4 text-sm text-muted">Nothing here yet.</p>

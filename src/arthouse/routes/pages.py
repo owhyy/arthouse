@@ -1,9 +1,6 @@
 """Page routes."""
 
-from typing import Annotated
-from urllib.parse import urlencode
-
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from arthouse.deps import DbSession, templates
 from arthouse.descriptors import canonical
@@ -63,25 +60,20 @@ async def library(
     db: DbSession,
     tab: str = "music",
     q: str = "",
-    descriptor: Annotated[list[str] | None, Query()] = None,
+    descriptor: str = "",
     page: int = 1,
 ):
     if tab not in MEDIA_ORDER:
         raise HTTPException(status_code=404)
     search = q.strip()
-    selected: list[str] = []
-    if tab == "film":
-        for value in descriptor or []:
-            name = canonical(value)
-            if name and name not in selected:
-                selected.append(name)
+    selected = canonical(descriptor) if tab == "film" and descriptor.strip() else ""
     all_items = query_items(db)
     counts = {media: sum(1 for i in all_items if i.media_type == media) for media in MEDIA_ORDER}
     matches = query_items(
         db,
         media_type=tab,
         search=search or None,
-        descriptors=selected or None,
+        descriptor=selected or None,
     )
     page_count = max(1, (len(matches) + PAGE_SIZE - 1) // PAGE_SIZE)
     page = min(max(page, 1), page_count)
@@ -99,13 +91,7 @@ async def library(
         for media in MEDIA_ORDER
     ]
     descriptor_groups = query_descriptor_options(db) if tab == "film" else []
-    listed = {option.name for _, options in descriptor_groups for option in options}
-    extra_descriptors = [name for name in selected if name not in listed]
-    params: list[tuple[str, str]] = []
-    if search:
-        params.append(("q", search))
-    params.extend(("descriptor", name) for name in selected)
-    filter_query = f"&{urlencode(params)}" if params else ""
+    descriptor_names = {option.name for _, options in descriptor_groups for option in options}
     return templates.TemplateResponse(
         request,
         "library.html",
@@ -113,10 +99,9 @@ async def library(
             "title": f"Library · {MEDIA_LABELS[tab]}",
             "tab": tab,
             "q": search,
-            "selected": selected,
-            "extra_descriptors": extra_descriptors,
-            "filter_query": filter_query,
+            "descriptor": selected,
             "descriptor_groups": descriptor_groups,
+            "descriptor_listed": selected in descriptor_names,
             "tabs": tabs,
             "page": page,
             "page_count": page_count,

@@ -86,9 +86,12 @@
             </optgroup>
           {% endfor %}
         </select>
-        <button type="submit" class="rounded border border-line px-3 py-2 text-sm text-muted hover:border-accent hover:text-ink">
-          Filter
-        </button>
+        <noscript>
+          {# htmx submits on change; keep a submit button when JS is off. #}
+          <button type="submit" class="rounded border border-line px-3 py-2 text-sm text-muted hover:border-accent hover:text-ink">
+            Filter
+          </button>
+        </noscript>
         {% if descriptor %}
           {% set clear_url = url_for('library') ~ '?tab=film' %}
           {% if q %}{% set clear_url = clear_url ~ '&q=' ~ (q|urlencode) %}{% endif %}

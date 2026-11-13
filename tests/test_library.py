@@ -4,15 +4,14 @@ from pathlib import Path
 
 import httpx
 import pytest
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Engine, create_engine, func, inspect, select, text
 from sqlalchemy.orm import Session
 
 from arthouse.deps import get_db
 from arthouse.descriptors import rebuild_descriptors
 from arthouse.library import (
-    FilmGenre,
-    FilmKeyword,
     FilmMeta,
+    ItemTag,
     build_db,
     query_item,
     query_items,
@@ -43,9 +42,25 @@ def _enrich_film(
             )
         )
         for tag in genres:
-            db.add(FilmGenre(source="letterboxd", source_id=source_id, tag=tag))
+            db.add(
+                ItemTag(
+                    source="letterboxd",
+                    source_id=source_id,
+                    provider="tmdb",
+                    origin="genre",
+                    tag=tag,
+                )
+            )
         for keyword in keywords or []:
-            db.add(FilmKeyword(source="letterboxd", source_id=source_id, keyword=keyword))
+            db.add(
+                ItemTag(
+                    source="letterboxd",
+                    source_id=source_id,
+                    provider="tmdb",
+                    origin="keyword",
+                    tag=keyword,
+                )
+            )
         db.commit()
     rebuild_descriptors(engine)
 
@@ -306,30 +321,29 @@ async def test_unknown_item_404s(client: httpx.AsyncClient, library_db: Engine) 
     assert response.status_code == 404
 
 
-def test_build_db_migrates_film_meta_without_director(tmp_path: Path) -> None:
+def test_build_db_drops_legacy_enrichment(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'library.db'}")
     with engine.begin() as conn:
-        conn.execute(
-            text(
-                "CREATE TABLE film_meta (source VARCHAR NOT NULL, "
-                + "source_id VARCHAR NOT NULL, tmdb_id INTEGER NOT NULL, "
-                + "overview VARCHAR NOT NULL, poster_path VARCHAR, "
-                + "matched_title VARCHAR NOT NULL, matched_year INTEGER, "
-                + "enriched_at DATETIME, PRIMARY KEY (source, source_id))"
+        for table in ("film_meta", "film_genre", "film_keyword"):
+            conn.execute(
+                text(
+                    f"CREATE TABLE {table} (source VARCHAR NOT NULL, "
+                    + "source_id VARCHAR NOT NULL, tag VARCHAR)"
+                )
             )
-        )
         conn.execute(
-            text(
-                "INSERT INTO film_meta VALUES ('letterboxd', 'https://boxd.it/old', "
-                + "7, 'Old.', NULL, 'Old', 1999, '2026-01-01')"
-            )
+            text("INSERT INTO film_genre VALUES ('letterboxd', 'https://boxd.it/old', 'Drama')")
         )
-    build_db(engine, tmp_path / "nope")  # startup migration must preserve rows
+    build_db(engine, tmp_path / "nope")  # startup drops the pre-refactor tables
+    inspector = inspect(engine)
+    assert not inspector.has_table("film_meta")
+    assert not inspector.has_table("film_genre")
+    assert not inspector.has_table("film_keyword")
     with Session(engine) as db:
-        meta = db.get(FilmMeta, ("letterboxd", "https://boxd.it/old"))
-    assert meta is not None
-    assert meta.director is None  # column added, backfill happens on enrich
-    assert meta.keywords_fetched is False  # same for keywords
+        # Legacy rows are not migrated; enrichment must be re-run.
+        assert db.scalar(select(func.count()).select_from(ItemTag)) == 0
+    build_db(engine, tmp_path / "nope")  # a second startup keeps the new tables
+    assert inspect(engine).has_table("film_meta")
 
 
 def test_build_db_tolerates_missing_data_dir(tmp_path: Path) -> None:

@@ -9,16 +9,24 @@ from arthouse.descriptors import (
     neighbors,
     rebuild_descriptors,
 )
-from arthouse.library import Descriptor, FilmKeyword, ItemDescriptor
+from arthouse.library import Descriptor, ItemDescriptor, ItemTag
 
 FILM_A = "https://boxd.it/aaa"
 FILM_B = "https://boxd.it/bbb"
 
 
-def _add_keywords(engine: Engine, source_id: str, keywords: list[str]) -> None:
+def _add_tags(engine: Engine, source_id: str, tags: list[str], origin: str = "keyword") -> None:
     with Session(engine) as db:
-        for keyword in keywords:
-            db.add(FilmKeyword(source="letterboxd", source_id=source_id, keyword=keyword))
+        for tag in tags:
+            db.add(
+                ItemTag(
+                    source="letterboxd",
+                    source_id=source_id,
+                    provider="tmdb",
+                    origin=origin,
+                    tag=tag,
+                )
+            )
         db.commit()
 
 
@@ -49,13 +57,58 @@ def test_facet_for_classifies_and_drops_trivia() -> None:
     assert facet_for("") is None
 
 
+def test_film_descriptors_ignore_genres(library_db: Engine) -> None:
+    _add_tags(library_db, FILM_A, ["Drama"], origin="genre")
+    _add_tags(library_db, FILM_A, ["neo-noir"], origin="keyword")
+
+    stats = rebuild_descriptors(library_db)
+
+    assert stats.tags == 1  # the genre is display-only
+    with Session(library_db) as db:
+        names = set(db.scalars(select(Descriptor.name)))
+    assert names == {"neo-noir"}
+
+
+def test_descriptors_are_keyed_by_media_type(library_db: Engine) -> None:
+    with Session(library_db) as db:
+        db.add_all(
+            [
+                ItemTag(
+                    source="rateyourmusic",
+                    source_id="1",
+                    provider="musicbrainz",
+                    origin="release_group",
+                    tag="jazz",
+                ),
+                ItemTag(
+                    source="letterboxd",
+                    source_id=FILM_A,
+                    provider="tmdb",
+                    origin="keyword",
+                    tag="jazz",
+                ),
+            ]
+        )
+        db.commit()
+
+    stats = rebuild_descriptors(library_db)
+
+    assert stats.descriptors == 2  # same name, one row per medium
+    with Session(library_db) as db:
+        keys = {
+            (descriptor.media_type, descriptor.name)
+            for descriptor in db.scalars(select(Descriptor))
+        }
+    assert keys == {("music", "jazz"), ("film", "jazz")}
+
+
 def test_rebuild_is_idempotent_and_dedupes(library_db: Engine) -> None:
-    _add_keywords(
+    _add_tags(
         library_db,
         FILM_A,
         ["Neo-Noir", "Melancholy", "Based on Novel", "aftercreditsstinger"],
     )
-    _add_keywords(
+    _add_tags(
         library_db,
         FILM_B,
         ["neo-noir", "Loneliness", "based on novel or book", "Paris, France"],
@@ -65,11 +118,11 @@ def test_rebuild_is_idempotent_and_dedupes(library_db: Engine) -> None:
     second = rebuild_descriptors(library_db)
 
     assert first == second
-    assert first.keywords == 8
+    assert first.tags == 8
     assert first.dropped == 1  # aftercreditsstinger
     assert first.pairs == 7  # 3 for A + 4 for B; both "based on novel" spellings share one name
     assert first.descriptors == 5
-    assert first.films == 2
+    assert first.items == 2
     assert first.facets == {"mood": 1, "production": 1, "setting": 1, "style": 1, "theme": 1}
     assert _count(library_db, Descriptor) == 5
     assert _count(library_db, ItemDescriptor) == 7
@@ -89,8 +142,8 @@ def test_rebuild_is_idempotent_and_dedupes(library_db: Engine) -> None:
 
 
 def test_load_matrix_drops_rare_descriptors(library_db: Engine) -> None:
-    _add_keywords(library_db, FILM_A, ["neo-noir", "melancholy"])
-    _add_keywords(library_db, FILM_B, ["neo-noir"])
+    _add_tags(library_db, FILM_A, ["neo-noir", "melancholy"])
+    _add_tags(library_db, FILM_B, ["neo-noir"])
     rebuild_descriptors(library_db)
 
     shared = load_matrix(library_db, min_df=2)
@@ -103,8 +156,8 @@ def test_load_matrix_drops_rare_descriptors(library_db: Engine) -> None:
 
 
 def test_neighbors_rank_shared_descriptors(library_db: Engine) -> None:
-    _add_keywords(library_db, FILM_A, ["neo-noir", "melancholy"])
-    _add_keywords(library_db, FILM_B, ["neo-noir", "loneliness"])
+    _add_tags(library_db, FILM_A, ["neo-noir", "melancholy"])
+    _add_tags(library_db, FILM_B, ["neo-noir", "loneliness"])
     rebuild_descriptors(library_db)
     matrix = load_matrix(library_db, min_df=1)
 

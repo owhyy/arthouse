@@ -4,7 +4,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from arthouse.enrich import TmdbMovie, enrich_films, find_film, keyword_report, match_film
-from arthouse.library import FilmGenre, FilmKeyword, FilmMeta, build_db
+from arthouse.library import FilmMeta, ItemTag, build_db
 
 
 class FakeTmdb:
@@ -123,8 +123,14 @@ def test_enrichment_stores_meta_and_genres(library_db: Engine) -> None:
 
     with Session(library_db) as db:
         metas = {m.source_id: m for m in db.scalars(select(FilmMeta))}
-        genres = {(g.source_id, g.tag) for g in db.scalars(select(FilmGenre))}
-        keywords = {(k.source_id, k.keyword) for k in db.scalars(select(FilmKeyword))}
+        genres = {
+            (tag.source_id, tag.tag)
+            for tag in db.scalars(select(ItemTag).where(ItemTag.origin == "genre"))
+        }
+        keywords = {
+            (tag.source_id, tag.tag)
+            for tag in db.scalars(select(ItemTag).where(ItemTag.origin == "keyword"))
+        }
     assert metas["https://boxd.it/aaa"].overview == "An A film."
     assert metas["https://boxd.it/aaa"].tmdb_id == 1
     assert metas["https://boxd.it/aaa"].director == "Director 1"
@@ -198,7 +204,10 @@ def test_keywords_are_backfilled_for_older_rows(library_db: Engine) -> None:
     stats = enrich_films(library_db, fake)
     assert stats.keywords == 1
     with Session(library_db) as db:
-        rows = {(k.source_id, k.keyword) for k in db.scalars(select(FilmKeyword))}
+        rows = {
+            (tag.source_id, tag.tag)
+            for tag in db.scalars(select(ItemTag).where(ItemTag.origin == "keyword"))
+        }
         meta = db.get(FilmMeta, ("letterboxd", "https://boxd.it/aaa"))
     assert rows == {
         ("https://boxd.it/aaa", "dystopia"),

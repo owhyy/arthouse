@@ -10,10 +10,10 @@ from arthouse.library import (
     FilmMeta,
     query_descriptor_options,
     query_film_directors,
-    query_film_genres,
     query_film_meta,
     query_item,
     query_item_descriptor_groups,
+    query_item_genres,
     query_items,
 )
 
@@ -37,7 +37,9 @@ async def library_detail(request: Request, item_id: int, db: DbSession):
         enriched = query_film_meta(db, item.source, item.source_id)
         if enriched is not None:
             film_meta, genres = enriched
-        descriptor_groups = query_item_descriptor_groups(db, item.source, item.source_id)
+        descriptor_groups = query_item_descriptor_groups(
+            db, item.media_type, item.source, item.source_id
+        )
     return templates.TemplateResponse(
         request,
         "library_detail.html",
@@ -107,7 +109,7 @@ async def library(
             "page_count": page_count,
             "items": items,
             "film_directors": query_film_directors(db) if tab == "film" else {},
-            "film_genres": query_film_genres(db) if tab == "film" else {},
+            "item_genres": query_item_genres(db, tab),
             "total": len(all_items),
         },
     )

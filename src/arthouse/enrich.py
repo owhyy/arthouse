@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
 from arthouse.descriptors import rebuild_descriptors
-from arthouse.library import FilmGenre, FilmKeyword, FilmMeta, Item, normalize_title
+from arthouse.library import FilmMeta, Item, ItemTag, normalize_title
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 YEAR_TOLERANCE = 1  # Letterboxd/library years can differ from TMDB's primary release
@@ -244,7 +244,15 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
             if meta.keywords_fetched:
                 continue
             for name in dict.fromkeys(client.keywords(meta.tmdb_id)):
-                db.add(FilmKeyword(source=meta.source, source_id=meta.source_id, keyword=name))
+                db.add(
+                    ItemTag(
+                        source=meta.source,
+                        source_id=meta.source_id,
+                        provider="tmdb",
+                        origin="keyword",
+                        tag=name,
+                    )
+                )
             meta.keywords_fetched = True
             db.commit()
             stats.keywords += 1
@@ -270,9 +278,25 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
             )
             for genre_id in match.get("genre_ids", []):
                 if name := genre_names.get(genre_id):
-                    db.add(FilmGenre(source=film.source, source_id=film.source_id, tag=name))
+                    db.add(
+                        ItemTag(
+                            source=film.source,
+                            source_id=film.source_id,
+                            provider="tmdb",
+                            origin="genre",
+                            tag=name,
+                        )
+                    )
             for keyword in dict.fromkeys(client.keywords(match["id"])):
-                db.add(FilmKeyword(source=film.source, source_id=film.source_id, keyword=keyword))
+                db.add(
+                    ItemTag(
+                        source=film.source,
+                        source_id=film.source_id,
+                        provider="tmdb",
+                        origin="keyword",
+                        tag=keyword,
+                    )
+                )
             db.commit()
             stats.matched += 1
     return stats
@@ -292,26 +316,28 @@ class KeywordReport:
 
 def keyword_report(engine: Engine, top: int = 25) -> KeywordReport:
     """Count keyword coverage and the most common descriptors."""
+    keywords = (ItemTag.origin == "keyword") & (ItemTag.provider == "tmdb")
     with Session(engine) as db:
         films = db.scalar(select(func.count()).select_from(FilmMeta)) or 0
         fetched = (
             db.scalar(select(func.count()).select_from(FilmMeta).where(FilmMeta.keywords_fetched))
             or 0
         )
-        rows = db.scalar(select(func.count()).select_from(FilmKeyword)) or 0
-        distinct = db.scalar(select(func.count(func.distinct(FilmKeyword.keyword)))) or 0
+        rows = db.scalar(select(func.count()).select_from(ItemTag).where(keywords)) or 0
+        distinct = db.scalar(select(func.count(func.distinct(ItemTag.tag))).where(keywords)) or 0
         with_keywords = (
             db.scalar(
                 select(func.count()).select_from(
-                    select(FilmKeyword.source, FilmKeyword.source_id).distinct().subquery()
+                    select(ItemTag.source, ItemTag.source_id).where(keywords).distinct().subquery()
                 )
             )
             or 0
         )
         top_rows = db.execute(
-            select(FilmKeyword.keyword, func.count())
-            .group_by(FilmKeyword.keyword)
-            .order_by(func.count().desc(), FilmKeyword.keyword)
+            select(ItemTag.tag, func.count())
+            .where(keywords)
+            .group_by(ItemTag.tag)
+            .order_by(func.count().desc(), ItemTag.tag)
             .limit(top)
         ).all()
     return KeywordReport(

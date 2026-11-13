@@ -32,7 +32,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # echo=debug prints every SQL statement to stderr (the server terminal).
     app.state.engine = create_engine(f"sqlite:///{data_dir / 'library.db'}", echo=settings.debug)
     build_db(app.state.engine, data_dir)
-    # Descriptors are derived from film_keyword; rebuild so the detail page
+    # Descriptors are derived from item_tag; rebuild so the detail page
     # and the library filter never serve a stale vocabulary.
     rebuild_descriptors(app.state.engine)
 

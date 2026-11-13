@@ -95,24 +95,21 @@ class FilmMeta(Base):
     enriched_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
 
 
-class FilmGenre(Base):
-    """One TMDB genre tag per enriched film."""
+class ItemTag(Base):
+    """One raw tag from an enrichment provider.
 
-    __tablename__: str = "film_genre"
+    `origin` says what kind of tag it is (TMDB genre vs keyword, MusicBrainz
+    release-group vs artist tag, OpenLibrary subject); `provider` says where it
+    came from. Raw tags stay the source of truth for the derived descriptors.
+    """
+
+    __tablename__: str = "item_tag"
 
     source: Mapped[str] = mapped_column(primary_key=True)
     source_id: Mapped[str] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(primary_key=True)
+    origin: Mapped[str] = mapped_column(primary_key=True)
     tag: Mapped[str] = mapped_column(primary_key=True)
-
-
-class FilmKeyword(Base):
-    """One TMDB keyword per enriched film (community-curated descriptors)."""
-
-    __tablename__: str = "film_keyword"
-
-    source: Mapped[str] = mapped_column(primary_key=True)
-    source_id: Mapped[str] = mapped_column(primary_key=True)
-    keyword: Mapped[str] = mapped_column(primary_key=True)
 
 
 class Descriptor(Base):
@@ -120,15 +117,17 @@ class Descriptor(Base):
 
     __tablename__: str = "descriptor"
 
+    media_type: Mapped[str] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(primary_key=True)
     facet: Mapped[str]
 
 
 class ItemDescriptor(Base):
-    """One normalized descriptor attached to a film."""
+    """One normalized descriptor attached to an item."""
 
     __tablename__: str = "item_descriptor"
 
+    media_type: Mapped[str] = mapped_column(primary_key=True)
     source: Mapped[str] = mapped_column(primary_key=True)
     source_id: Mapped[str] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(primary_key=True)
@@ -247,20 +246,21 @@ def _letterboxd_reviews(path: Path) -> dict[tuple[str, int | None], str]:
     return reviews
 
 
-def _add_missing_columns(engine: Engine) -> None:
-    """Tiny forward migration for enrichment tables (create_all won't ALTER)."""
+def drop_legacy_enrichment(engine: Engine) -> None:
+    """One-time reset of the film-only enrichment tables.
+
+    They are regenerable from TMDB, so dropping is cheaper and simpler than a
+    schema migration. `film_genre`/`film_keyword` no longer exist in the model,
+    so their presence is the signal that this is a pre-refactor database.
+    Re-run `python -m arthouse.enrich` to refill `film_meta` and `item_tag`.
+    """
     inspector = inspect(engine)
-    if not inspector.has_table("film_meta"):
+    if not any(inspector.has_table(table) for table in ("film_genre", "film_keyword")):
         return
-    columns = {column["name"] for column in inspector.get_columns("film_meta")}
-    if "director" not in columns:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE film_meta ADD COLUMN director VARCHAR"))
-    if "keywords_fetched" not in columns:
-        with engine.begin() as conn:
-            conn.execute(
-                text("ALTER TABLE film_meta ADD COLUMN keywords_fetched BOOLEAN NOT NULL DEFAULT 0")
-            )
+    with engine.begin() as conn:
+        for table in ("film_meta", "film_genre", "film_keyword"):
+            if inspector.has_table(table):
+                conn.execute(text(f"DROP TABLE {table}"))
 
 
 def build_db(engine: Engine, data_dir: Path) -> int:
@@ -289,10 +289,10 @@ def build_db(engine: Engine, data_dir: Path) -> int:
             item.review = reviews.get((normalize_title(item.title), item.year))
 
     # Only the export-derived items table is rebuilt; enrichment tables
-    # (film_meta, film_genre, film_keyword) persist across restarts.
+    # (film_meta, item_tag) persist across restarts.
     Base.metadata.tables["items"].drop(engine, checkfirst=True)
-    _add_missing_columns(engine)
     Base.metadata.create_all(engine)
+    drop_legacy_enrichment(engine)
     with Session(engine) as session:
         session.add_all(items)
         session.commit()
@@ -313,6 +313,7 @@ def query_items(
         stmt = stmt.join(
             ItemDescriptor,
             and_(
+                ItemDescriptor.media_type == Item.media_type,
                 ItemDescriptor.source == Item.source,
                 ItemDescriptor.source_id == Item.source_id,
             ),
@@ -331,12 +332,18 @@ class DescriptorOption:
 
 
 def query_descriptor_options(
-    db: Session, min_count: int = 2, per_facet: int = 30
+    db: Session, media_type: str = "film", min_count: int = 2, per_facet: int = 30
 ) -> list[tuple[str, list[DescriptorOption]]]:
     """Top descriptors per facet; rare ones stay reachable via detail chips."""
     rows = db.execute(
         select(Descriptor.name, Descriptor.facet, func.count(ItemDescriptor.name))
-        .join(ItemDescriptor, ItemDescriptor.name == Descriptor.name)
+        .join(
+            ItemDescriptor,
+            and_(
+                ItemDescriptor.media_type == Descriptor.media_type,
+                ItemDescriptor.name == Descriptor.name,
+            ),
+        )
         .join(
             Item,
             and_(
@@ -344,7 +351,7 @@ def query_descriptor_options(
                 Item.source_id == ItemDescriptor.source_id,
             ),
         )
-        .where(Item.media_type == "film")
+        .where(Item.media_type == media_type)
         .group_by(Descriptor.name, Descriptor.facet)
         .having(func.count(ItemDescriptor.name) >= min_count)
         .order_by(Descriptor.facet, func.count(ItemDescriptor.name).desc(), Descriptor.name)
@@ -356,13 +363,23 @@ def query_descriptor_options(
 
 
 def query_item_descriptor_groups(
-    db: Session, source: str, source_id: str
+    db: Session, media_type: str, source: str, source_id: str
 ) -> list[tuple[str, list[str]]]:
-    """Canonical descriptors for one film, grouped by facet and sorted."""
+    """Canonical descriptors for one item, grouped by facet and sorted."""
     rows = db.execute(
         select(Descriptor.facet, Descriptor.name)
-        .join(ItemDescriptor, ItemDescriptor.name == Descriptor.name)
-        .where(ItemDescriptor.source == source, ItemDescriptor.source_id == source_id)
+        .join(
+            ItemDescriptor,
+            and_(
+                ItemDescriptor.media_type == Descriptor.media_type,
+                ItemDescriptor.name == Descriptor.name,
+            ),
+        )
+        .where(
+            ItemDescriptor.media_type == media_type,
+            ItemDescriptor.source == source,
+            ItemDescriptor.source_id == source_id,
+        )
     ).all()
     groups: dict[str, list[str]] = {}
     for facet, name in rows:
@@ -381,9 +398,13 @@ def query_film_meta(db: Session, source: str, source_id: str) -> tuple[FilmMeta,
         return None
     genres = list(
         db.scalars(
-            select(FilmGenre.tag)
-            .where(FilmGenre.source == source, FilmGenre.source_id == source_id)
-            .order_by(FilmGenre.tag)
+            select(ItemTag.tag)
+            .where(
+                ItemTag.source == source,
+                ItemTag.source_id == source_id,
+                ItemTag.origin == "genre",
+            )
+            .order_by(ItemTag.tag)
         )
     )
     return meta, genres
@@ -394,10 +415,18 @@ def query_film_directors(db: Session) -> dict[str, str]:
     return {meta.source_id: meta.director for meta in db.scalars(select(FilmMeta)) if meta.director}
 
 
-def query_film_genres(db: Session) -> dict[str, list[str]]:
-    """All film genres keyed by platform id — one query for the whole grid."""
+def query_item_genres(db: Session, media_type: str) -> dict[str, list[str]]:
+    """Genre tags keyed by platform id — one query for the whole grid."""
     genres: dict[str, list[str]] = {}
-    rows = db.execute(select(FilmGenre.source_id, FilmGenre.tag).order_by(FilmGenre.tag))
+    rows = db.execute(
+        select(ItemTag.source_id, ItemTag.tag)
+        .join(
+            Item,
+            and_(Item.source == ItemTag.source, Item.source_id == ItemTag.source_id),
+        )
+        .where(Item.media_type == media_type, ItemTag.origin == "genre")
+        .order_by(ItemTag.tag)
+    ).all()
     for source_id, tag in rows:
         genres.setdefault(source_id, []).append(tag)
     return genres

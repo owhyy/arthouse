@@ -120,8 +120,8 @@
                 {% if credit %}{{ credit }}{% endif %}
                 {% if item.year %}{% if credit %} · {% endif %}{{ item.year }}{% endif %}
               </p>
-              {% if film_genres %}
-                {% set tags = film_genres.get(item.source_id, []) %}
+              {% if item_genres %}
+                {% set tags = item_genres.get(item.source_id, []) %}
                 {% if tags %}
                   <ul class="mt-2 flex flex-wrap gap-1">
                     {% for tag in tags %}

@@ -76,19 +76,20 @@ def _titles(movie: TmdbMovie) -> tuple[str, ...]:
 def match_film(results: list[TmdbMovie], title: str, year: int | None) -> TmdbMovie | None:
     """Pick the best candidate: exact normalized title, year within tolerance.
 
-    Returns None when nothing matches exactly — a fuzzy guess is worse than a
-    reported miss, because wrong genres poison the recommender.
+    When the item has a year, a candidate must also be dated within
+    `YEAR_TOLERANCE`; undated and far-off remakes are reported as misses rather
+    than guessed, because wrong genres poison the recommender. Yearless items
+    fall back to the exact title alone.
     """
     wanted = normalize_title(title)
     exact = [m for m in results if wanted in {normalize_title(t) for t in _titles(m)}]
     if year is not None:
-        close = [
+        pool = [
             m
             for m in exact
             if (m.get("release_date") or "")[:4].isdigit()
             and abs(int((m.get("release_date") or "")[:4]) - year) <= YEAR_TOLERANCE
         ]
-        pool = close or exact
     else:
         pool = exact
     if not pool:

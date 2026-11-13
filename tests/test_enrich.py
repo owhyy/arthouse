@@ -67,6 +67,24 @@ def test_match_tolerates_one_year_drift() -> None:
     assert match["id"] == 3
 
 
+def test_match_rejects_out_of_tolerance_years() -> None:
+    # TMDB's `year` filter is loose (a 2019 search can return the 1999 film of
+    # the same name), so the year check must happen here. No in-tolerance
+    # candidate means a reported miss, not the remake.
+    results = [_movie(5, "Parasite", "1999-01-01", 500, [18])]
+    assert match_film(results, "Parasite", 2019) is None
+
+
+def test_match_rejects_undated_candidates_when_a_year_is_known() -> None:
+    results = [_movie(6, "Parasite", "", 500, [18])]
+    assert match_film(results, "Parasite", 2019) is None
+
+
+def test_match_keeps_exact_title_for_yearless_items() -> None:
+    results = [_movie(7, "Parasite", "1999-01-01", 500, [18])]
+    assert match_film(results, "Parasite", None) is not None
+
+
 def test_match_ignores_fuzzy_titles() -> None:
     results = [_movie(4, "Parasite 2", "2019-01-01", 500, [18])]
     assert match_film(results, "Parasite", 2019) is None

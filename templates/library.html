@@ -37,9 +37,15 @@
 
   <section id="library-region" class="mt-6">
     {% if request.headers.get("HX-Request") %}
-      {# Keep the search form's hidden fields in sync after a region swap. #}
-      <input type="hidden" name="tab" value="{{ tab }}" hx-swap-oob="outerHTML:#library-tab">
-      <input type="hidden" name="descriptor" value="{{ descriptor }}" hx-swap-oob="outerHTML:#library-descriptor">
+      {# We're not duplicating ids, just making sure it's replaced when htmx fetches it #}
+      {# djlint:off H053 #}
+      <input type="hidden" name="tab" value="{{ tab }}" id="library-tab" hx-swap-oob="outerHTML:#library-tab">
+      <input type="hidden"
+             name="descriptor"
+             value="{{ descriptor }}"
+             id="library-descriptor"
+             hx-swap-oob="outerHTML:#library-descriptor">
+      {# djlint:on #}
     {% endif %}
     <nav class="flex gap-1 border-b border-line" aria-label="Categories">
       {% for t in tabs %}

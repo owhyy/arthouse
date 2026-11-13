@@ -406,6 +406,34 @@ async def test_library_tabs_use_htmx_swap(client: httpx.AsyncClient, library_db:
     assert 'id="library-region"' in response.text
 
 
+async def test_oob_hidden_inputs_keep_their_target_ids(
+    client: httpx.AsyncClient, library_db: Engine
+) -> None:
+    _override_db(library_db)
+    try:
+        response = await client.get(
+            "/library", params={"tab": "book"}, headers={"HX-Request": "true"}
+        )
+    finally:
+        _clear_override()
+    assert response.status_code == 200
+    # htmx replaces the target with a clone of the OOB element, so the element
+    # must carry the same id or the next swap silently misses (the search form
+    # then submits a stale tab/descriptor).
+    oob_tags: list[str] = re.findall(r"<input[^>]*hx-swap-oob[^>]*>", response.text)
+    assert len(oob_tags) == 2
+    replaced = {}
+    for tag in oob_tags:
+        tag_id = re.search(r'id="([^"]+)"', tag)
+        target = re.search(r'hx-swap-oob="outerHTML:#([^"]+)"', tag)
+        assert tag_id is not None
+        assert target is not None
+        replaced[target.group(1)] = (tag_id.group(1), tag)
+    assert replaced["library-tab"][0] == "library-tab"
+    assert replaced["library-descriptor"][0] == "library-descriptor"
+    assert 'value="book"' in replaced["library-tab"][1]
+
+
 async def test_library_paginates_the_grid(
     client: httpx.AsyncClient, library_db: Engine, monkeypatch: pytest.MonkeyPatch
 ) -> None:

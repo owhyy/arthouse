@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from arthouse.config import BASE_DIR, get_settings
 from arthouse.descriptors import load_matrix
 from arthouse.descriptors import neighbors as content_neighbors
-from arthouse.library import FilmMeta, Item, normalize_title
+from arthouse.library import Item, ItemMeta, normalize_title
 
 DEFAULT_RATINGS = BASE_DIR / "datasets" / "ratings_small.csv"
 DEFAULT_LINKS = BASE_DIR / "datasets" / "links.csv"
@@ -51,23 +51,27 @@ def load_links(path: Path) -> dict[int, int]:
 def library_films(engine: Engine, links: dict[int, int]) -> dict[int, LibraryFilm]:
     """Library films MovieLens knows about, keyed by movieId.
 
-    The join goes through `film_meta.tmdb_id`, so a film needs TMDB enrichment
-    before it can take part in collaborative filtering.
+    The join goes through `item_meta.external_id` (the TMDB id), so a film
+    needs TMDB enrichment before it can take part in collaborative filtering.
     """
     films: dict[int, LibraryFilm] = {}
     with Session(engine) as db:
         rows = db.execute(
-            select(Item.source, Item.source_id, Item.title, Item.year, FilmMeta.tmdb_id)
+            select(Item.source, Item.source_id, Item.title, Item.year, ItemMeta.external_id)
             .join(
-                FilmMeta,
+                ItemMeta,
                 and_(
-                    FilmMeta.source == Item.source,
-                    FilmMeta.source_id == Item.source_id,
+                    ItemMeta.source == Item.source,
+                    ItemMeta.source_id == Item.source_id,
                 ),
             )
-            .where(Item.media_type == "film")
+            .where(Item.media_type == "film", ItemMeta.provider == "tmdb")
         ).all()
-    for source, source_id, title, year, tmdb_id in rows:
+    for source, source_id, title, year, external_id in rows:
+        try:
+            tmdb_id = int(external_id)
+        except ValueError:  # a non-numeric external id cannot be a TMDB id
+            continue
         movie_id = links.get(tmdb_id)
         if movie_id is None or movie_id in films:
             continue

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
 from arthouse.descriptors import rebuild_descriptors
-from arthouse.library import FilmMeta, Item, ItemTag, normalize_title
+from arthouse.library import Item, ItemMeta, ItemTag, normalize_title
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 YEAR_TOLERANCE = 1  # Letterboxd/library years can differ from TMDB's primary release
@@ -213,7 +213,10 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
     stats = EnrichStats()
     genre_names = client.genre_map()
     with Session(engine) as db:
-        done = {(meta.source, meta.source_id): meta for meta in db.scalars(select(FilmMeta))}
+        done = {
+            (meta.source, meta.source_id): meta
+            for meta in db.scalars(select(ItemMeta).where(ItemMeta.provider == "tmdb"))
+        }
         films = list(
             db.scalars(
                 select(Item)
@@ -228,22 +231,22 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
         if limit is not None:
             pending = pending[:limit]
 
-        # Rows enriched before the director column existed (or before this
-        # step) get their director fetched once; `director is None` means
-        # "never fetched", "" means "fetched, TMDB lists none".
+        # Rows enriched before the credit column existed (or before this step)
+        # get their director fetched once; `credit is None` means "never
+        # fetched", "" means "fetched, TMDB lists none".
         for meta in done.values():
-            if meta.director is None:
-                meta.director = client.directors(meta.tmdb_id)
+            if meta.credit is None:
+                meta.credit = client.directors(int(meta.external_id))
                 db.commit()
                 stats.backfilled += 1
 
-        # Keywords arrived after the initial batch too. `keywords_fetched`
-        # records the attempt, so a film TMDB has no keywords for is not
-        # refetched on every run.
+        # Keywords arrived after the initial batch too. `tags_fetched` records
+        # the attempt, so a film TMDB has no keywords for is not refetched on
+        # every run.
         for meta in done.values():
-            if meta.keywords_fetched:
+            if meta.tags_fetched:
                 continue
-            for name in dict.fromkeys(client.keywords(meta.tmdb_id)):
+            for name in dict.fromkeys(client.keywords(int(meta.external_id))):
                 db.add(
                     ItemTag(
                         source=meta.source,
@@ -253,7 +256,7 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
                         tag=name,
                     )
                 )
-            meta.keywords_fetched = True
+            meta.tags_fetched = True
             db.commit()
             stats.keywords += 1
 
@@ -264,14 +267,15 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
                 continue
             release = match.get("release_date") or ""
             db.add(
-                FilmMeta(
+                ItemMeta(
                     source=film.source,
                     source_id=film.source_id,
-                    tmdb_id=match["id"],
-                    overview=match.get("overview", ""),
-                    poster_path=match.get("poster_path"),
-                    director=client.directors(match["id"]),
-                    keywords_fetched=True,
+                    provider="tmdb",
+                    external_id=str(match["id"]),
+                    summary=match.get("overview", ""),
+                    image_path=match.get("poster_path"),
+                    credit=client.directors(match["id"]),
+                    tags_fetched=True,
                     matched_title=match.get("title", ""),
                     matched_year=int(release[:4]) if release[:4].isdigit() else None,
                 )
@@ -317,10 +321,11 @@ class KeywordReport:
 def keyword_report(engine: Engine, top: int = 25) -> KeywordReport:
     """Count keyword coverage and the most common descriptors."""
     keywords = (ItemTag.origin == "keyword") & (ItemTag.provider == "tmdb")
+    tmdb = ItemMeta.provider == "tmdb"
     with Session(engine) as db:
-        films = db.scalar(select(func.count()).select_from(FilmMeta)) or 0
+        films = db.scalar(select(func.count()).select_from(ItemMeta).where(tmdb)) or 0
         fetched = (
-            db.scalar(select(func.count()).select_from(FilmMeta).where(FilmMeta.keywords_fetched))
+            db.scalar(select(func.count()).select_from(ItemMeta).where(tmdb, ItemMeta.tags_fetched))
             or 0
         )
         rows = db.scalar(select(func.count()).select_from(ItemTag).where(keywords)) or 0

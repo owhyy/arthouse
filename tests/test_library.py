@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from arthouse.deps import get_db
 from arthouse.descriptors import rebuild_descriptors
 from arthouse.library import (
-    FilmMeta,
+    Base,
+    ItemMeta,
     ItemTag,
     build_db,
     query_item,
@@ -30,13 +31,14 @@ def _enrich_film(
 ) -> None:
     with Session(engine) as db:
         db.add(
-            FilmMeta(
+            ItemMeta(
                 source="letterboxd",
                 source_id=source_id,
-                tmdb_id=1,
-                overview=overview,
-                poster_path=None,
-                director=director,
+                provider="tmdb",
+                external_id="1",
+                summary=overview,
+                image_path=None,
+                credit=director,
                 matched_title="Fixture Film A",
                 matched_year=1999,
             )
@@ -323,6 +325,7 @@ async def test_unknown_item_404s(client: httpx.AsyncClient, library_db: Engine) 
 
 def test_build_db_drops_legacy_enrichment(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'library.db'}")
+    Base.metadata.create_all(engine)  # current item_meta/item_tag tables
     with engine.begin() as conn:
         for table in ("film_meta", "film_genre", "film_keyword"):
             conn.execute(
@@ -334,7 +337,13 @@ def test_build_db_drops_legacy_enrichment(tmp_path: Path) -> None:
         conn.execute(
             text("INSERT INTO film_genre VALUES ('letterboxd', 'https://boxd.it/old', 'Drama')")
         )
-    build_db(engine, tmp_path / "nope")  # startup drops the pre-refactor tables
+        conn.execute(
+            text(
+                "INSERT INTO item_tag VALUES "
+                + "('letterboxd', 'https://boxd.it/old', 'tmdb', 'keyword', 'old')"
+            )
+        )
+    build_db(engine, tmp_path / "nope")  # startup drops/reset the pre-refactor tables
     inspector = inspect(engine)
     assert not inspector.has_table("film_meta")
     assert not inspector.has_table("film_genre")
@@ -342,8 +351,9 @@ def test_build_db_drops_legacy_enrichment(tmp_path: Path) -> None:
     with Session(engine) as db:
         # Legacy rows are not migrated; enrichment must be re-run.
         assert db.scalar(select(func.count()).select_from(ItemTag)) == 0
+        assert db.scalar(select(func.count()).select_from(ItemMeta)) == 0
     build_db(engine, tmp_path / "nope")  # a second startup keeps the new tables
-    assert inspect(engine).has_table("film_meta")
+    assert inspect(engine).has_table("item_meta")
 
 
 def test_build_db_tolerates_missing_data_dir(tmp_path: Path) -> None:

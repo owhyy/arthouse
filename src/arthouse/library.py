@@ -16,6 +16,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 MEDIA_ORDER = ("music", "film", "book")
 MEDIA_LABELS = {"music": "Music", "film": "Films", "book": "Books"}
+PROVIDER_LABELS = {"tmdb": "TMDB", "musicbrainz": "MusicBrainz", "openlibrary": "OpenLibrary"}
 FACET_ORDER = ("theme", "mood", "style", "setting", "production")
 
 
@@ -75,24 +76,29 @@ class Item(Base):
         return score_str(self.rating)
 
 
-class FilmMeta(Base):
-    """TMDB enrichment for a film; keyed by platform id so it survives rebuilds."""
+class ItemMeta(Base):
+    """Provider enrichment for one item; keyed by platform id so it survives rebuilds."""
 
-    __tablename__: str = "film_meta"
+    __tablename__: str = "item_meta"
 
     source: Mapped[str] = mapped_column(primary_key=True)
     source_id: Mapped[str] = mapped_column(primary_key=True)
-    tmdb_id: Mapped[int]
-    overview: Mapped[str]
-    poster_path: Mapped[str | None]
-    # None means "not fetched yet"; "" means TMDB lists no director.
-    director: Mapped[str | None] = mapped_column(default=None)
-    # False means "keywords not fetched yet" — an empty keyword set is a
-    # valid result and must not be refetched on every run.
-    keywords_fetched: Mapped[bool] = mapped_column(default=False)
+    provider: Mapped[str]  # tmdb | musicbrainz | openlibrary
+    external_id: Mapped[str]  # TMDB id, MusicBrainz MBID, OpenLibrary work id
+    summary: Mapped[str]  # overview / description
+    image_path: Mapped[str | None]  # poster / cover
+    # None means "not fetched yet"; "" means the provider lists no credit.
+    credit: Mapped[str | None] = mapped_column(default=None)
+    # False means the provider's separate tag fetch has not been attempted yet;
+    # an empty tag set is a valid result and must not be refetched every run.
+    tags_fetched: Mapped[bool] = mapped_column(default=False)
     matched_title: Mapped[str]
     matched_year: Mapped[int | None]
     enriched_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+
+    @property
+    def provider_label(self) -> str:
+        return PROVIDER_LABELS.get(self.provider, self.provider)
 
 
 class ItemTag(Base):
@@ -247,20 +253,25 @@ def _letterboxd_reviews(path: Path) -> dict[tuple[str, int | None], str]:
 
 
 def drop_legacy_enrichment(engine: Engine) -> None:
-    """One-time reset of the film-only enrichment tables.
+    """One-time reset of pre-refactor enrichment tables.
 
-    They are regenerable from TMDB, so dropping is cheaper and simpler than a
-    schema migration. `film_genre`/`film_keyword` no longer exist in the model,
-    so their presence is the signal that this is a pre-refactor database.
-    Re-run `python -m arthouse.enrich` to refill `film_meta` and `item_tag`.
+    They are regenerable from the providers, so dropping is cheaper and simpler
+    than a schema migration. The removed `film_*` tables are the signal that
+    this is an old database; clearing `item_meta`/`item_tag` prevents duplicate
+    keys when enrichment is re-run. Re-run `python -m arthouse.enrich` to refill
+    them.
     """
     inspector = inspect(engine)
-    if not any(inspector.has_table(table) for table in ("film_genre", "film_keyword")):
+    legacy = ("film_meta", "film_genre", "film_keyword")
+    if not any(inspector.has_table(table) for table in legacy):
         return
     with engine.begin() as conn:
-        for table in ("film_meta", "film_genre", "film_keyword"):
+        for table in legacy:
             if inspector.has_table(table):
                 conn.execute(text(f"DROP TABLE {table}"))
+        for table in ("item_meta", "item_tag"):
+            if inspector.has_table(table):
+                conn.execute(text(f"DELETE FROM {table}"))
 
 
 def build_db(engine: Engine, data_dir: Path) -> int:
@@ -289,7 +300,7 @@ def build_db(engine: Engine, data_dir: Path) -> int:
             item.review = reviews.get((normalize_title(item.title), item.year))
 
     # Only the export-derived items table is rebuilt; enrichment tables
-    # (film_meta, item_tag) persist across restarts.
+    # (item_meta, item_tag) persist across restarts.
     Base.metadata.tables["items"].drop(engine, checkfirst=True)
     Base.metadata.create_all(engine)
     drop_legacy_enrichment(engine)
@@ -391,9 +402,9 @@ def query_item(db: Session, item_id: int) -> Item | None:
     return db.get(Item, item_id)
 
 
-def query_film_meta(db: Session, source: str, source_id: str) -> tuple[FilmMeta, list[str]] | None:
-    """TMDB metadata and genre tags for one film, or None when unenriched."""
-    meta = db.get(FilmMeta, (source, source_id))
+def query_item_meta(db: Session, source: str, source_id: str) -> tuple[ItemMeta, list[str]] | None:
+    """Provider metadata and genre tags for one item, or None when unenriched."""
+    meta = db.get(ItemMeta, (source, source_id))
     if meta is None:
         return None
     genres = list(
@@ -410,9 +421,9 @@ def query_film_meta(db: Session, source: str, source_id: str) -> tuple[FilmMeta,
     return meta, genres
 
 
-def query_film_directors(db: Session) -> dict[str, str]:
-    """Director names keyed by platform id — one query for the whole grid."""
-    return {meta.source_id: meta.director for meta in db.scalars(select(FilmMeta)) if meta.director}
+def query_item_credits(db: Session) -> dict[str, str]:
+    """Provider credits (director, …) keyed by platform id — one query for the grid."""
+    return {meta.source_id: meta.credit for meta in db.scalars(select(ItemMeta)) if meta.credit}
 
 
 def query_item_genres(db: Session, media_type: str) -> dict[str, list[str]]:

@@ -5,7 +5,7 @@
 
   <h1 class="mt-4 text-3xl font-bold tracking-tight">{{ item.title }}</h1>
   <p class="mt-2 text-muted">
-    {% set credit = item.creator or (film_meta.director if film_meta else "") %}
+    {% set credit = item.creator or (item_meta.credit if item_meta else "") %}
     {% if credit %}{{ credit }}{% endif %}
     {% if item.year %}{% if credit %} · {% endif %}{{ item.year }}{% endif %}
   </p>
@@ -38,17 +38,19 @@
               </ul>
             </div>
           {% endfor %}
-          <p class="mt-2 text-xs text-muted">Descriptors via TMDB keywords</p>
+          <p class="mt-2 text-xs text-muted">
+            Descriptors via {{ item_meta.provider_label if item_meta else "enrichment" }} keywords
+          </p>
         </div>
       {% endif %}
     </div>
   {% endif %}
 
-  {% if film_meta and film_meta.overview %}
+  {% if item_meta and item_meta.summary %}
     <section class="mt-8">
       <h2 class="text-sm font-semibold tracking-wide text-muted uppercase">Synopsis</h2>
-      <p class="mt-2 leading-relaxed">{{ film_meta.overview }}</p>
-      <p class="mt-2 text-xs text-muted">Synopsis via TMDB</p>
+      <p class="mt-2 leading-relaxed">{{ item_meta.summary }}</p>
+      <p class="mt-2 text-xs text-muted">Synopsis via {{ item_meta.provider_label }}</p>
     </section>
   {% endif %}
 

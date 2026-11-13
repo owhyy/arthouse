@@ -7,13 +7,13 @@ from arthouse.descriptors import canonical
 from arthouse.library import (
     MEDIA_LABELS,
     MEDIA_ORDER,
-    FilmMeta,
+    ItemMeta,
     query_descriptor_options,
-    query_film_directors,
-    query_film_meta,
     query_item,
+    query_item_credits,
     query_item_descriptor_groups,
     query_item_genres,
+    query_item_meta,
     query_items,
 )
 
@@ -30,23 +30,21 @@ async def library_detail(request: Request, item_id: int, db: DbSession):
     item = query_item(db, item_id)
     if item is None:
         raise HTTPException(status_code=404)
-    film_meta: FilmMeta | None = None
+    item_meta: ItemMeta | None = None
     genres: list[str] = []
-    descriptor_groups: list[tuple[str, list[str]]] = []
-    if item.media_type == "film":
-        enriched = query_film_meta(db, item.source, item.source_id)
-        if enriched is not None:
-            film_meta, genres = enriched
-        descriptor_groups = query_item_descriptor_groups(
-            db, item.media_type, item.source, item.source_id
-        )
+    enriched = query_item_meta(db, item.source, item.source_id)
+    if enriched is not None:
+        item_meta, genres = enriched
+    descriptor_groups = query_item_descriptor_groups(
+        db, item.media_type, item.source, item.source_id
+    )
     return templates.TemplateResponse(
         request,
         "library_detail.html",
         {
             "title": item.title,
             "item": item,
-            "film_meta": film_meta,
+            "item_meta": item_meta,
             "genres": genres,
             "descriptor_groups": descriptor_groups,
         },
@@ -108,7 +106,7 @@ async def library(
             "page": page,
             "page_count": page_count,
             "items": items,
-            "film_directors": query_film_directors(db) if tab == "film" else {},
+            "item_credits": query_item_credits(db),
             "item_genres": query_item_genres(db, tab),
             "total": len(all_items),
         },

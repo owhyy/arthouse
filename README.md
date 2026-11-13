@@ -68,16 +68,18 @@ uv run python -m arthouse.enrich --report   # keyword coverage + top terms
 Matching is strict: normalized exact title (or TMDB `original_title`) with a
 ±1-year tolerance; very long titles retry with the part before the first comma.
 Anything else is reported as unmatched rather than guessed — wrong genres are
-worse than missing ones. Results live in `film_meta` plus `item_tag`
+worse than missing ones. Results live in `item_meta` plus `item_tag`
 (`provider='tmdb'`, `origin='genre'|'keyword'`), keyed by
 `(source, source_id)`, so restarting the app (which rebuilds only `items`)
 never discards them; re-runs skip already-enriched films.
-`film_meta.keywords_fetched` records the attempt, so a film TMDB has no
+`item_meta.tags_fetched` records the attempt, so a film TMDB has no
 keywords for is not refetched every run. TV entries from the Letterboxd export
 (series, miniseries) have no TMDB movie match and stay unmatched.
 
-The enrichment schema is shared by every medium: `item_tag` stores raw tags
-from any provider, and `descriptor`/`item_descriptor` are derived from it.
+The enrichment schema is shared by every medium: `item_meta` stores
+provider-neutral fields (`provider`, `external_id`, `summary`, `image_path`,
+`credit`, `tags_fetched`), `item_tag` stores raw tags from any provider, and
+`descriptor`/`item_descriptor` are derived from it.
 Pre-refactor databases (with `film_genre`/`film_keyword`) are reset once at
 startup — those tables are regenerable, so re-run the enrichment command
 instead of migrating them.
@@ -114,7 +116,7 @@ detail page and filter never serve a stale vocabulary.
 
 `datasets/` (git-ignored) can hold the MovieLens exports (`ratings*.csv`,
 `links.csv`) alongside the TMDB dump. Films join MovieLens through
-`film_meta.tmdb_id` → `links.csv` (`tmdbId` → `movieId`); nothing is written to
+`item_meta.external_id` → `links.csv` (`tmdbId` → `movieId`); nothing is written to
 the database. Neighbours are adjusted-cosine item similarities (ratings centred
 on each user's mean), computed only between films already in the library, so
 they are directly comparable with the content kNN:

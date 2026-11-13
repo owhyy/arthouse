@@ -4,7 +4,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from arthouse.enrich import TmdbMovie, enrich_films, find_film, keyword_report, match_film
-from arthouse.library import FilmMeta, ItemTag, build_db
+from arthouse.library import ItemMeta, ItemTag, build_db
 
 
 class FakeTmdb:
@@ -122,7 +122,7 @@ def test_enrichment_stores_meta_and_genres(library_db: Engine) -> None:
     assert stats.unmatched == []
 
     with Session(library_db) as db:
-        metas = {m.source_id: m for m in db.scalars(select(FilmMeta))}
+        metas = {m.source_id: m for m in db.scalars(select(ItemMeta))}
         genres = {
             (tag.source_id, tag.tag)
             for tag in db.scalars(select(ItemTag).where(ItemTag.origin == "genre"))
@@ -131,10 +131,10 @@ def test_enrichment_stores_meta_and_genres(library_db: Engine) -> None:
             (tag.source_id, tag.tag)
             for tag in db.scalars(select(ItemTag).where(ItemTag.origin == "keyword"))
         }
-    assert metas["https://boxd.it/aaa"].overview == "An A film."
-    assert metas["https://boxd.it/aaa"].tmdb_id == 1
-    assert metas["https://boxd.it/aaa"].director == "Director 1"
-    assert metas["https://boxd.it/aaa"].keywords_fetched
+    assert metas["https://boxd.it/aaa"].summary == "An A film."
+    assert metas["https://boxd.it/aaa"].external_id == "1"
+    assert metas["https://boxd.it/aaa"].credit == "Director 1"
+    assert metas["https://boxd.it/aaa"].tags_fetched
     assert genres == {
         ("https://boxd.it/aaa", "Drama"),
         ("https://boxd.it/aaa", "Science Fiction"),
@@ -164,12 +164,13 @@ def test_enrichment_is_idempotent(library_db: Engine) -> None:
 def test_directors_are_backfilled_for_older_rows(library_db: Engine) -> None:
     with Session(library_db) as db:
         db.add(
-            FilmMeta(
+            ItemMeta(
                 source="letterboxd",
                 source_id="https://boxd.it/aaa",
-                tmdb_id=42,
-                overview="Old row.",
-                poster_path=None,
+                provider="tmdb",
+                external_id="42",
+                summary="Old row.",
+                image_path=None,
                 matched_title="Fixture Film A",
                 matched_year=1999,
             )
@@ -181,20 +182,21 @@ def test_directors_are_backfilled_for_older_rows(library_db: Engine) -> None:
     assert stats.keywords == 1  # older rows get keywords too
     assert stats.matched == 0  # B is unmatched, A is already enriched
     with Session(library_db) as db:
-        meta = db.get(FilmMeta, ("letterboxd", "https://boxd.it/aaa"))
+        meta = db.get(ItemMeta, ("letterboxd", "https://boxd.it/aaa"))
     assert meta is not None
-    assert meta.director == "Akira Kurosawa"
+    assert meta.credit == "Akira Kurosawa"
 
 
 def test_keywords_are_backfilled_for_older_rows(library_db: Engine) -> None:
     with Session(library_db) as db:
         db.add(
-            FilmMeta(
+            ItemMeta(
                 source="letterboxd",
                 source_id="https://boxd.it/aaa",
-                tmdb_id=42,
-                overview="Old row.",
-                poster_path=None,
+                provider="tmdb",
+                external_id="42",
+                summary="Old row.",
+                image_path=None,
                 matched_title="Fixture Film A",
                 matched_year=1999,
             )
@@ -208,13 +210,13 @@ def test_keywords_are_backfilled_for_older_rows(library_db: Engine) -> None:
             (tag.source_id, tag.tag)
             for tag in db.scalars(select(ItemTag).where(ItemTag.origin == "keyword"))
         }
-        meta = db.get(FilmMeta, ("letterboxd", "https://boxd.it/aaa"))
+        meta = db.get(ItemMeta, ("letterboxd", "https://boxd.it/aaa"))
     assert rows == {
         ("https://boxd.it/aaa", "dystopia"),
         ("https://boxd.it/aaa", "nihilism"),
     }
     assert meta is not None
-    assert meta.keywords_fetched
+    assert meta.tags_fetched
 
 
 def test_empty_keyword_list_is_not_refetched(library_db: Engine) -> None:
@@ -253,6 +255,6 @@ def test_enrichment_survives_library_rebuild(library_db: Engine, fixtures_dir: P
     enrich_films(library_db, fake)
     build_db(library_db, fixtures_dir)  # startup rebuild drops/recreates items only
     with Session(library_db) as db:
-        meta = db.get(FilmMeta, ("letterboxd", "https://boxd.it/aaa"))
+        meta = db.get(ItemMeta, ("letterboxd", "https://boxd.it/aaa"))
         assert meta is not None
-        assert meta.overview == "Kept."
+        assert meta.summary == "Kept."

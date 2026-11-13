@@ -14,7 +14,7 @@ from arthouse.collab import (
     load_links,
     neighbors,
 )
-from arthouse.library import FilmMeta, query_items
+from arthouse.library import ItemMeta, query_items
 
 
 def _write_csv(path: Path, header: list[str], rows: list[list[str]]) -> Path:
@@ -30,13 +30,14 @@ def _add_tmdb_ids(engine: Engine, tmdb_ids: list[int]) -> list[str]:
         films = query_items(db, media_type="film")
         for item, tmdb_id in zip(films, tmdb_ids, strict=True):
             db.add(
-                FilmMeta(
+                ItemMeta(
                     source=item.source,
                     source_id=item.source_id,
-                    tmdb_id=tmdb_id,
-                    overview="",
-                    poster_path=None,
-                    director="",
+                    provider="tmdb",
+                    external_id=str(tmdb_id),
+                    summary="",
+                    image_path=None,
+                    credit="",
                     matched_title=item.title,
                     matched_year=item.year,
                 )

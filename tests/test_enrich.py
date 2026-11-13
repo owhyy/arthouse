@@ -90,6 +90,13 @@ def test_match_ignores_fuzzy_titles() -> None:
     assert match_film(results, "Parasite", 2019) is None
 
 
+def test_match_rejects_symbol_only_titles() -> None:
+    # Such a title normalizes to "", which must not be treated as "equal" to
+    # every other symbol-only title.
+    results = [_movie(8, "!!!", "2019-01-01", 500, [18])]
+    assert match_film(results, "???", 2019) is None
+
+
 def test_match_accepts_the_original_title() -> None:
     # TMDB lists Le Bonheur (1965) under its English title "Happiness".
     results: list[TmdbMovie] = [

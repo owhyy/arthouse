@@ -7,6 +7,7 @@
 import csv
 import html
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -24,9 +25,19 @@ class Base(DeclarativeBase):
     pass
 
 
+def _fold_latin_accent(char: str) -> str:
+    if char.isascii():
+        return char
+    base = "".join(
+        ch for ch in unicodedata.normalize("NFKD", char) if not unicodedata.combining(ch)
+    )
+    return base if base.isascii() else char
+
+
 def normalize_title(title: str) -> str:
-    """Lowercase, strip punctuation — used to match titles across exports."""
-    return re.sub(r"[^a-z0-9 ]+", "", title.lower()).strip()
+    composed = unicodedata.normalize("NFC", title)
+    folded = "".join(_fold_latin_accent(char) for char in composed).casefold()
+    return re.sub(r"[^\w ]+", "", folded).strip()
 
 
 _TAG = re.compile(r"<[^>]+>")

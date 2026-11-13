@@ -14,6 +14,7 @@ from arthouse.library import (
     ItemMeta,
     ItemTag,
     build_db,
+    normalize_title,
     query_item,
     query_items,
 )
@@ -535,3 +536,37 @@ async def test_library_page_empty_when_no_data(client: httpx.AsyncClient, tmp_pa
     assert response.status_code == 200
     assert "0 rated items" in response.text
     assert "Nothing here yet." in response.text
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("Seven Samurai", "seven samurai"),
+        ("  Le Samouraï ", "le samourai"),
+        ("Amélie", "amelie"),
+        ("Ame\u0301lie", "amelie"),  # decomposed é folds like the composed form
+        ("8½", "8½"),
+        ("Léon: The Professional", "leon the professional"),
+        ("Птица", "птица"),
+        ("アダンの風", "アダンの風"),
+        ("무너지기", "무너지기"),
+        ("!!!", ""),
+    ],
+)
+def test_normalize_title_folds_case_accents_and_punctuation(title: str, expected: str) -> None:
+    assert normalize_title(title) == expected
+
+
+def test_normalize_title_keeps_distinct_non_latin_titles_apart() -> None:
+    # The old ASCII-only regex mapped every one of these to "", so title lookup
+    # returned the first non-Latin item for all of them.
+    titles = [
+        "Птица",
+        "Радио Африка",
+        "シーナリィ",
+        "무너지기",
+        "Праздник на улице 36",
+        "Уроборос: Улица 36",  # noqa: RUF001 — Cyrillic, deliberately confusable
+    ]
+    keys = [normalize_title(title) for title in titles]
+    assert len(set(keys)) == len(titles)

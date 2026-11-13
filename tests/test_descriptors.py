@@ -9,7 +9,7 @@ from arthouse.descriptors import (
     neighbors,
     rebuild_descriptors,
 )
-from arthouse.library import Descriptor, ItemDescriptor, ItemTag
+from arthouse.library import Descriptor, Item, ItemDescriptor, ItemTag
 
 FILM_A = "https://boxd.it/aaa"
 FILM_B = "https://boxd.it/bbb"
@@ -153,6 +153,47 @@ def test_load_matrix_drops_rare_descriptors(library_db: Engine) -> None:
     full = load_matrix(library_db, min_df=1)
     assert set(full.idf) == {"neo-noir", "melancholy"}
     assert len(full.items) == 2
+
+
+def _add_music_item(engine: Engine, source_id: str, title: str, descriptor: str) -> None:
+    with Session(engine) as db:
+        db.add(
+            Item(
+                media_type="music",
+                source="rateyourmusic",
+                source_id=source_id,
+                title=title,
+                creator="",
+                year=2000,
+                rating=4.0,
+                rating_native="8/10",
+                rated_on=None,
+                review=None,
+            )
+        )
+        db.add(
+            ItemDescriptor(
+                media_type="music", source="rateyourmusic", source_id=source_id, name=descriptor
+            )
+        )
+        db.commit()
+
+
+def test_matrix_resolves_non_latin_titles_individually(library_db: Engine) -> None:
+    _add_music_item(library_db, "n1", "Птица", "post-punk")
+    _add_music_item(library_db, "n2", "アダンの風", "ambient")
+    _add_music_item(library_db, "n3", "!!!", "noise")
+    matrix = load_matrix(library_db, media_type="music", min_df=1)
+
+    first = find_item(matrix, "Птица")
+    second = find_item(matrix, "アダンの風")
+    assert first is not None
+    assert second is not None
+    assert {first.source_id, second.source_id} == {"n1", "n2"}
+    # A symbol-only title has no key, so it must not answer every symbol query;
+    # the unambiguous (source, source_id) form still resolves it.
+    assert find_item(matrix, "???") is None
+    assert find_item(matrix, ("rateyourmusic", "n3")) is not None
 
 
 def test_neighbors_rank_shared_descriptors(library_db: Engine) -> None:

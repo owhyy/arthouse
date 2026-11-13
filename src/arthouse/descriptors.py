@@ -494,7 +494,9 @@ def load_matrix(engine: Engine, media_type: str = "film", min_df: int = 3) -> De
                 weights={name: weight / norm for name, weight in weights.items()},
             )
         )
-        by_title[normalize_title(title)].append(len(items) - 1)
+        title_key = normalize_title(title)
+        if title_key:  # symbol-only titles are reachable by (source, source_id) only
+            by_title[title_key].append(len(items) - 1)
     return DescriptorMatrix(items=items, idf=idf, by_title=dict(by_title))
 
 

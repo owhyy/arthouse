@@ -82,6 +82,10 @@ def match_film(results: list[TmdbMovie], title: str, year: int | None) -> TmdbMo
     fall back to the exact title alone.
     """
     wanted = normalize_title(title)
+    if not wanted:
+        # A title made only of punctuation has no usable key: matching on "" would
+        # accept any other symbol-only title, so report the miss instead.
+        return None
     exact = [m for m in results if wanted in {normalize_title(t) for t in _titles(m)}]
     if year is not None:
         pool = [

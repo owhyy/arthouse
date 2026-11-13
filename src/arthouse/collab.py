@@ -116,7 +116,9 @@ def build_matrix(
     by_title: defaultdict[str, list[int]] = defaultdict(list)
     for movie_id, film in films.items():
         if movie_id in kept:
-            by_title[normalize_title(film.title)].append(movie_id)
+            title_key = normalize_title(film.title)
+            if title_key:  # symbol-only titles are reachable by movieId only
+                by_title[title_key].append(movie_id)
     return CollabMatrix(
         films=films,
         vectors=kept,

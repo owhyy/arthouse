@@ -51,7 +51,7 @@
       {% for t in tabs %}
         {% set tab_url = url_for('library') ~ '?tab=' ~ t['key'] %}
         {% if q %}{% set tab_url = tab_url ~ '&q=' ~ (q|urlencode) %}{% endif %}
-        {% if descriptor and t['key'] == 'film' %}{% set tab_url = tab_url ~ '&descriptor=' ~ (descriptor|urlencode) %}{% endif %}
+        {% if descriptor %}{% set tab_url = tab_url ~ '&descriptor=' ~ (descriptor|urlencode) %}{% endif %}
         <a href="{{ tab_url }}"
            hx-get="{{ tab_url }}"
            hx-target="#library-region"
@@ -65,9 +65,9 @@
       {% endfor %}
     </nav>
 
-    {% if descriptor_groups %}
+    {% if descriptor_groups or descriptor %}
       <form action="{{ url_for('library') }}" method="get" class="mt-4 flex flex-wrap items-center gap-2">
-        <input type="hidden" name="tab" value="film">
+        <input type="hidden" name="tab" value="{{ tab }}">
         {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
         <label for="descriptor-filter" class="text-sm text-muted">Descriptor</label>
         <select id="descriptor-filter"
@@ -99,7 +99,7 @@
           </button>
         </noscript>
         {% if descriptor %}
-          {% set clear_url = url_for('library') ~ '?tab=film' %}
+          {% set clear_url = url_for('library') ~ '?tab=' ~ tab %}
           {% if q %}{% set clear_url = clear_url ~ '&q=' ~ (q|urlencode) %}{% endif %}
           <a href="{{ clear_url }}"
              hx-get="{{ clear_url }}"

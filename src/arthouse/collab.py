@@ -3,8 +3,7 @@
 Run with: uv run python -m arthouse.collab [--title TITLE]... [--ratings PATH]
 
 The MovieLens exports are local-only (`datasets/` is git-ignored). Similarities
-are computed only between films already in the library, so the output is
-directly comparable with the content kNN in `arthouse.descriptors`.
+are computed only between films already in the library.
 """
 
 import argparse
@@ -20,8 +19,6 @@ from sqlalchemy import Engine, and_, create_engine, select
 from sqlalchemy.orm import Session
 
 from arthouse.config import BASE_DIR, get_settings
-from arthouse.descriptors import load_matrix
-from arthouse.descriptors import neighbors as content_neighbors
 from arthouse.library import Item, ItemMeta, normalize_title
 
 DEFAULT_RATINGS = BASE_DIR / "datasets" / "ratings_small.csv"
@@ -232,11 +229,6 @@ def main() -> None:
         default=5,
         help="minimum users who rated both films",
     )
-    parser.add_argument(
-        "--compare",
-        action="store_true",
-        help="also print content kNN neighbours for the same titles",
-    )
     args = parser.parse_args()
 
     settings = get_settings()
@@ -248,7 +240,6 @@ def main() -> None:
         + f"(min_overlap={cast(int, args.min_overlap)})"
     )
 
-    content = load_matrix(engine) if cast(bool, args.compare) else None
     for title in cast(list[str], args.title):
         film = find_film(matrix, title)
         if film is None:
@@ -268,13 +259,6 @@ def main() -> None:
                 f"  {result.score:.3f}  {_label(result.film.title, result.film.year)}"
                 + f"  ({result.overlap} co-raters)"
             )
-        if content is not None:
-            print("  content kNN:")
-            matches = content_neighbors(content, (film.source, film.source_id), k=cast(int, args.k))
-            if not matches:
-                print("    no shared descriptors")
-            for match in matches:
-                print(f"    {match.score:.3f}  {_label(match.item.title, match.item.year)}")
 
 
 if __name__ == "__main__":

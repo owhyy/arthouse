@@ -11,9 +11,9 @@ from sqlalchemy import create_engine
 from arthouse.assets import asset_url, build_asset_map
 from arthouse.config import BASE_DIR, Settings, get_settings
 from arthouse.deps import templates
-from arthouse.descriptors import rebuild_descriptors
 from arthouse.library import build_db
 from arthouse.routes import pages
+from arthouse.tagging import rebuild_descriptors
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

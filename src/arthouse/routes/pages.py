@@ -3,7 +3,6 @@
 from fastapi import APIRouter, HTTPException, Request
 
 from arthouse.deps import DbSession, templates
-from arthouse.descriptors import canonical
 from arthouse.library import (
     MEDIA_LABELS,
     MEDIA_ORDER,
@@ -16,6 +15,7 @@ from arthouse.library import (
     query_item_meta,
     query_items,
 )
+from arthouse.vocab import lookup
 
 router = APIRouter()
 
@@ -35,9 +35,7 @@ async def library_detail(request: Request, item_id: int, db: DbSession):
     enriched = query_item_meta(db, item.source, item.source_id)
     if enriched is not None:
         item_meta, genres = enriched
-    descriptor_groups = query_item_descriptor_groups(
-        db, item.media_type, item.source, item.source_id
-    )
+    descriptor_groups = query_item_descriptor_groups(db, item.source, item.source_id)
     return templates.TemplateResponse(
         request,
         "library_detail.html",
@@ -66,7 +64,12 @@ async def library(
     if tab not in MEDIA_ORDER:
         raise HTTPException(status_code=404)
     search = q.strip()
-    selected = canonical(descriptor) if tab == "film" and descriptor.strip() else ""
+    # An alias in the URL ("melancholy") resolves to its descriptor
+    # ("melancholic"); an unknown value is kept as-is so it matches nothing
+    # rather than silently turning the filter off.
+    requested = descriptor.strip()
+    hit = lookup(requested) if requested else None
+    selected = hit.name if hit is not None else requested
     all_items = query_items(db)
     counts = {media: sum(1 for i in all_items if i.media_type == media) for media in MEDIA_ORDER}
     matches = query_items(
@@ -90,7 +93,7 @@ async def library(
         }
         for media in MEDIA_ORDER
     ]
-    descriptor_groups = query_descriptor_options(db) if tab == "film" else []
+    descriptor_groups = query_descriptor_options(db, tab)
     descriptor_names = {option.name for _, options in descriptor_groups for option in options}
     return templates.TemplateResponse(
         request,

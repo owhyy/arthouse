@@ -15,10 +15,11 @@ from pathlib import Path
 from sqlalchemy import Engine, and_, func, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
+from arthouse.vocab import FACETS, Facet, facet_of
+
 MEDIA_ORDER = ("music", "film", "book")
 MEDIA_LABELS = {"music": "Music", "film": "Films", "book": "Books"}
 PROVIDER_LABELS = {"tmdb": "TMDB", "musicbrainz": "MusicBrainz", "openlibrary": "OpenLibrary"}
-FACET_ORDER = ("theme", "mood", "style", "setting", "production")
 
 
 class Base(DeclarativeBase):
@@ -129,22 +130,15 @@ class ItemTag(Base):
     tag: Mapped[str] = mapped_column(primary_key=True)
 
 
-class Descriptor(Base):
-    """Normalized descriptor vocabulary with a facet (theme, mood, …)."""
-
-    __tablename__: str = "descriptor"
-
-    media_type: Mapped[str] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(primary_key=True)
-    facet: Mapped[str]
-
-
 class ItemDescriptor(Base):
-    """One normalized descriptor attached to an item."""
+    """One descriptor from the closed vocabulary attached to an item.
+
+    Only the item identity and the descriptor name are stored: the facet lives
+    in `arthouse.vocab`, so there is no second copy to drift out of sync.
+    """
 
     __tablename__: str = "item_descriptor"
 
-    media_type: Mapped[str] = mapped_column(primary_key=True)
     source: Mapped[str] = mapped_column(primary_key=True)
     source_id: Mapped[str] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(primary_key=True)
@@ -335,7 +329,6 @@ def query_items(
         stmt = stmt.join(
             ItemDescriptor,
             and_(
-                ItemDescriptor.media_type == Item.media_type,
                 ItemDescriptor.source == Item.source,
                 ItemDescriptor.source_id == Item.source_id,
             ),
@@ -349,23 +342,20 @@ def query_items(
 @dataclass(frozen=True)
 class DescriptorOption:
     name: str
-    facet: str
+    facet: Facet
     count: int
 
 
 def query_descriptor_options(
-    db: Session, media_type: str = "film", min_count: int = 2, per_facet: int = 30
-) -> list[tuple[str, list[DescriptorOption]]]:
-    """Top descriptors per facet; rare ones stay reachable via detail chips."""
+    db: Session, media_type: str, per_facet: int = 30
+) -> list[tuple[Facet, list[DescriptorOption]]]:
+    """Descriptors used in one medium, grouped by facet.
+
+    Only descriptors that actually occur are listed, so a small vocabulary
+    needs no `min_count` cut-off the way the 2,800-term keyword list did.
+    """
     rows = db.execute(
-        select(Descriptor.name, Descriptor.facet, func.count(ItemDescriptor.name))
-        .join(
-            ItemDescriptor,
-            and_(
-                ItemDescriptor.media_type == Descriptor.media_type,
-                ItemDescriptor.name == Descriptor.name,
-            ),
-        )
+        select(ItemDescriptor.name, func.count())
         .join(
             Item,
             and_(
@@ -374,39 +364,36 @@ def query_descriptor_options(
             ),
         )
         .where(Item.media_type == media_type)
-        .group_by(Descriptor.name, Descriptor.facet)
-        .having(func.count(ItemDescriptor.name) >= min_count)
-        .order_by(Descriptor.facet, func.count(ItemDescriptor.name).desc(), Descriptor.name)
+        .group_by(ItemDescriptor.name)
     ).all()
-    groups: dict[str, list[DescriptorOption]] = {}
-    for name, facet, count in rows:
+    groups: dict[Facet, list[DescriptorOption]] = {}
+    for name, count in rows:
+        facet = facet_of(name)
+        if facet is None:  # a stored name the vocabulary no longer knows
+            continue
         groups.setdefault(facet, []).append(DescriptorOption(name, facet, count))
-    return [(facet, groups[facet][:per_facet]) for facet in FACET_ORDER if facet in groups]
+    for options in groups.values():
+        options.sort(key=lambda option: (-option.count, option.name))
+    return [(facet, groups[facet][:per_facet]) for facet in FACETS if facet in groups]
 
 
 def query_item_descriptor_groups(
-    db: Session, media_type: str, source: str, source_id: str
-) -> list[tuple[str, list[str]]]:
-    """Canonical descriptors for one item, grouped by facet and sorted."""
-    rows = db.execute(
-        select(Descriptor.facet, Descriptor.name)
-        .join(
-            ItemDescriptor,
-            and_(
-                ItemDescriptor.media_type == Descriptor.media_type,
-                ItemDescriptor.name == Descriptor.name,
-            ),
-        )
-        .where(
-            ItemDescriptor.media_type == media_type,
+    db: Session, source: str, source_id: str
+) -> list[tuple[Facet, list[str]]]:
+    """Descriptors for one item, grouped by facet in vocabulary order."""
+    names = db.scalars(
+        select(ItemDescriptor.name).where(
             ItemDescriptor.source == source,
             ItemDescriptor.source_id == source_id,
         )
     ).all()
-    groups: dict[str, list[str]] = {}
-    for facet, name in rows:
+    groups: dict[Facet, list[str]] = {}
+    for name in names:
+        facet = facet_of(name)
+        if facet is None:
+            continue
         groups.setdefault(facet, []).append(name)
-    return [(facet, sorted(groups[facet])) for facet in FACET_ORDER if facet in groups]
+    return [(facet, sorted(groups[facet])) for facet in FACETS if facet in groups]
 
 
 def query_item(db: Session, item_id: int) -> Item | None:

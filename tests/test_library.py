@@ -9,7 +9,6 @@ from sqlalchemy import Engine, create_engine, func, inspect, select, text
 from sqlalchemy.orm import Session
 
 from arthouse.deps import get_db
-from arthouse.descriptors import rebuild_descriptors
 from arthouse.library import (
     Base,
     ItemMeta,
@@ -20,6 +19,7 @@ from arthouse.library import (
     query_items,
 )
 from arthouse.routes import pages
+from arthouse.tagging import rebuild_descriptors
 
 
 def _enrich_film(
@@ -160,7 +160,7 @@ async def test_detail_page_shows_synopsis_and_genres(
         "https://boxd.it/aaa",
         "A fixture synopsis.",
         ["Drama", "Fantasy"],
-        keywords=["slow cinema", "loneliness"],
+        keywords=["loneliness", "melancholy"],
     )
     with Session(library_db) as db:
         film = next(i for i in query_items(db) if i.title == "Fixture Film A")
@@ -177,10 +177,11 @@ async def test_detail_page_shows_synopsis_and_genres(
     assert "Fantasy" in response.text
     assert "Fixture Director" in response.text  # film credit line
     assert "Descriptors" in response.text
-    assert "slow cinema" in response.text
     assert "loneliness" in response.text
-    assert "descriptor=slow%20cinema" in response.text  # chips filter the library
-    assert "descriptor=loneliness" in response.text
+    assert "melancholic" in response.text  # "melancholy" resolves to the descriptor
+    assert "melancholy" not in response.text
+    assert "descriptor=loneliness" in response.text  # chips filter the library
+    assert "descriptor=melancholic" in response.text
 
 
 async def test_detail_page_omits_synopsis_when_unenriched(
@@ -244,7 +245,7 @@ async def test_library_filters_films_by_descriptor(
     assert "Fixture Film A" in shared.text
     assert "Fixture Film B" in shared.text
     assert 'id="descriptor-filter"' in shared.text
-    assert "neo-noir (2)" in shared.text
+    assert "dark (2)" in shared.text  # "neo-noir" is an alias of atmosphere/dark
     assert unique.status_code == 200
     assert "Fixture Film A" in unique.text
     assert "Fixture Film B" not in unique.text
@@ -257,17 +258,59 @@ async def test_library_filters_films_by_descriptor(
     assert re.search(r"Films\s*<span[^>]*>1</span>", combined.text)
 
 
-async def test_descriptor_filter_is_film_only(
+async def test_descriptor_filter_applies_to_every_medium(
     client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
 ) -> None:
+    """Descriptors are cross-media, so the filter is no longer film-only."""
+    with Session(library_db) as db:
+        db.add(
+            ItemTag(
+                source="rateyourmusic",
+                source_id="1",
+                provider="musicbrainz",
+                origin="release_group",
+                tag="melancholy",
+            )
+        )
+        db.commit()
+    rebuild_descriptors(library_db)
     _override_db(test_app, library_db)
     try:
-        response = await client.get("/library", params={"tab": "music", "descriptor": "neo-noir"})
+        response = await client.get("/library", params={"tab": "music", "descriptor": "melancholy"})
     finally:
         _clear_override(test_app)
     assert response.status_code == 200
     assert "Fixture Album" in response.text
-    assert 'id="descriptor-filter"' not in response.text
+    assert "Fixture Best Album" not in response.text
+    assert 'id="descriptor-filter"' in response.text
+    assert "melancholic (1)" in response.text
+
+
+async def test_detail_chips_link_to_the_items_own_tab(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    """Album chips must not link to `tab=film` (regression: hardcoded tab)."""
+    with Session(library_db) as db:
+        db.add(
+            ItemTag(
+                source="rateyourmusic",
+                source_id="1",
+                provider="musicbrainz",
+                origin="release_group",
+                tag="melancholy",
+            )
+        )
+        db.commit()
+    rebuild_descriptors(library_db)
+    with Session(library_db) as db:
+        album = next(i for i in query_items(db) if i.title == "Fixture Album")
+    _override_db(test_app, library_db)
+    try:
+        response = await client.get(f"/library/{album.id}")
+    finally:
+        _clear_override(test_app)
+    assert response.status_code == 200
+    assert "tab=music&amp;descriptor=melancholic" in response.text
 
 
 async def test_detail_page_omits_empty_review(
@@ -488,7 +531,7 @@ async def test_pagination_preserves_the_descriptor_filter(
         _clear_override(test_app)
     assert response.status_code == 200
     assert "Page 1 of 2" in response.text
-    assert "&amp;page=2&amp;descriptor=neo-noir" in response.text
+    assert "&amp;page=2&amp;descriptor=dark" in response.text
 
 
 async def test_search_filters_titles_in_the_active_tab(

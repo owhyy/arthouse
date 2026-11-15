@@ -17,8 +17,8 @@ from sqlalchemy import Engine, create_engine, func, select
 from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
-from arthouse.descriptors import rebuild_descriptors
 from arthouse.library import Item, ItemMeta, ItemTag, normalize_title
+from arthouse.tagging import rebuild_descriptors
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 YEAR_TOLERANCE = 1  # Letterboxd/library years can differ from TMDB's primary release

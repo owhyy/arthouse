@@ -24,16 +24,17 @@ the form also works as a plain GET). Every entry links to a detail page with the
 rating, the platform it came from, and your review when the export has one
 (Letterboxd `reviews.csv`, RYM `Review`, Goodreads `My Review`; HTML is
 stripped and paragraphs preserved). Enriched films also show TMDB genre tags
-(on cards and the detail page), the TMDB synopsis and faceted keyword
-descriptors (detail page only), and the director in the same credit line where
-books show the author and music the artist.
-On the Films tab, a facet-grouped descriptor filter narrows the grid
-(`?descriptor=…`); descriptor chips on film detail pages link to the same
-filtered view. The select lists the 30 most common descriptors per facet;
-rarer ones stay reachable from a film's chips. While a title search or
-descriptor filter is active, the active tab's count shows the number of
-matching items; the other tabs keep their library totals. The grid shows 60
-items per page and pagination keeps the active search and descriptor filter.
+(on cards and the detail page), the TMDB synopsis and faceted descriptors
+(detail page only), and the director in the same credit line where books show
+the author and music the artist.
+A facet-grouped descriptor filter narrows **any** tab (`?descriptor=…`);
+descriptor chips on detail pages link to the same filtered view. Facets are
+`mood`, `tone`, `atmosphere`, `setting`, `theme`, `style` and `creator`.
+The filter accepts an alias as well (`melancholy` filters on `melancholic`).
+While a title search or descriptor filter is active, the active tab's count
+shows the number of matching items; the other tabs keep their library totals.
+The grid shows 60 items per page and pagination keeps the active search and
+descriptor filter.
 Ratings are shown as a unified 0–10 score (one platform scale that maps all
 three losslessly: RYM ÷1, Letterboxd stars ×2, Goodreads quarters ×2). Put the
 exports in
@@ -79,38 +80,57 @@ keywords for is not refetched every run. TV entries from the Letterboxd export
 The enrichment schema is shared by every medium: `item_meta` stores
 provider-neutral fields (`provider`, `external_id`, `summary`, `image_path`,
 `credit`, `tags_fetched`), `item_tag` stores raw tags from any provider, and
-`descriptor`/`item_descriptor` are derived from it.
-Pre-refactor databases (with `film_genre`/`film_keyword`) are reset once at
-startup — those tables are regenerable, so re-run the enrichment command
-instead of migrating them.
+`item_descriptor` holds the descriptors those tags map onto.
 
-### Content similarity (descriptors)
+### Descriptor vocabulary
 
-Raw tags are normalized into a shared vocabulary (`based on novel` →
-`based on novel or book`, parentheticals stripped, place variants unified) and
-tagged with a facet: `theme`, `mood`, `style`, `setting`, or `production`.
-Production trivia (`aftercreditsstinger`, `duringcreditsstinger`) is dropped.
-Film descriptors come from TMDB **keywords** only; genres are display-only.
-The vocabulary is keyed by `(media_type, name)`, so the same word can mean a
-different facet per medium. Rebuild the derived tables and print the most
-widely shared descriptors per facet:
+Every medium is described by one closed vocabulary in `src/arthouse/vocab.py`:
+**222 descriptors** across seven facets — `mood`, `tone`, `atmosphere`,
+`setting`, `theme`, `style`, and `creator` (who made the work). The list is
+authored, not derived: a descriptor has to describe an album, a film and a book
+equally well, so audio-only vocabulary (production, vocal technique, timbre) and
+release provenance (`remake`, `imax`, `black and white`) are excluded. `creator`
+is the one deliberate exception — it describes authorship rather than content,
+and it exists because `woman director` is one of the most common provider tags.
+It is only ever set from an explicit provider claim, never inferred from
+someone's work.
+
+Each descriptor carries two relations:
+
+- **aliases** — the same concept in another form (`melancholy`, `sad`,
+  `sorrowful` → `melancholic`). Any provider tag that normalises to an alias is
+  tagged with that descriptor.
+- **neighbours** — adjacent but different concepts (`sombre`, `bittersweet` for
+  `melancholic`). Neighbours never tag anything; they exist so a filter can
+  later widen to its surroundings.
+
+Matching is exact after normalisation (case, punctuation, parentheticals, and
+`-`/`_`/`/` all fold to spaces). There is no stemming, edit distance or model
+inference: a tag the vocabulary does not know is dropped and reported, never
+guessed at. That is deliberate — `poison`/`prison`, `angel`/`anger`, and
+`busy`→`business` or `sad`→`sadism` are precisely what suffix rules get wrong.
+A duplicate name, an alias claimed by two descriptors, an alias that lands on
+another descriptor's name, or an unknown neighbour all fail at import.
+
+Film descriptors come from TMDB **keywords** only; genres stay display-only.
+Rebuild `item_descriptor` from the raw tags and inspect what mapped:
 
 ```bash
-uv run python -m arthouse.descriptors
-uv run python -m arthouse.descriptors --media music
+uv run python -m arthouse.tagging                    # rebuild + one-line summary
+uv run python -m arthouse.tagging --report           # per-medium coverage
+uv run python -m arthouse.tagging --report --media film --unmapped 40
 ```
 
-Nearest neighbours are TF-IDF cosine over binary descriptor presence
-(`idf = log((1 + N) / (1 + df)) + 1`, L2-normalized); descriptors shared by
-fewer than 3 items are ignored by default (`--min-df`). Ask for specific items:
+The app rebuilds the table at startup and at the end of `arthouse.enrich`, so the
+detail page and the filter never serve a stale vocabulary. The unmapped list is
+the worklist: add an alias, re-run, coverage goes up. Current snapshot: 1,776 of
+5,227 film keyword occurrences (**34.0%**) map onto 1,522 item-descriptor pairs
+across 272 items, and 234 of 294 films get at least three descriptors.
 
-```bash
-uv run python -m arthouse.descriptors --title "Seven Samurai" --title "Aftersun"
-```
-
-The library filter reads the same derived tables. The app rebuilds them at
-startup, and `python -m arthouse.enrich` rebuilds them after each run, so the
-detail page and filter never serve a stale vocabulary.
+`item_descriptor` stores only `(source, source_id, name)`; the facet lives in the
+vocabulary, so there is no second copy to drift. The old `descriptor` facet cache
+and the v1 `film_genre`/`film_keyword` tables are dropped at startup — all of it
+is regenerable, so re-run the enrichment command instead of migrating it.
 
 ### Collaborative similarity (MovieLens)
 
@@ -118,11 +138,10 @@ detail page and filter never serve a stale vocabulary.
 `links.csv`) alongside the TMDB dump. Films join MovieLens through
 `item_meta.external_id` → `links.csv` (`tmdbId` → `movieId`); nothing is written to
 the database. Neighbours are adjusted-cosine item similarities (ratings centred
-on each user's mean), computed only between films already in the library, so
-they are directly comparable with the content kNN:
+on each user's mean), computed only between films already in the library:
 
 ```bash
-uv run python -m arthouse.collab --title "Seven Samurai" --compare
+uv run python -m arthouse.collab --title "Seven Samurai"
 uv run python -m arthouse.collab --ratings datasets/ratings.csv --title "In the Mood for Love"
 ```
 
@@ -178,7 +197,8 @@ config.py        # pydantic-settings; paths anchored to the project root
 deps.py          # Jinja2Templates singleton, SQLAlchemy session dependency
 assets.py        # content-hashed asset URLs (`asset()` template global)
 library.py       # ORM model, platform CSV parsers, SQLite build/queries
-descriptors.py   # tag normalization, facets, TF-IDF content kNN
+vocab.py         # closed cross-media descriptor vocabulary (7 facets, aliases)
+tagging.py       # maps raw provider tags onto the vocabulary; coverage report
 collab.py        # MovieLens adjusted-cosine item-item CF baseline
 routes/pages.py  # HTML routes only
 templates/         # Jinja2: base.html (navbar), index.html, library.html, library_detail.html

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from sqlalchemy import Engine, create_engine, func, inspect, select, text
 from sqlalchemy.orm import Session
 
@@ -18,7 +19,6 @@ from arthouse.library import (
     query_item,
     query_items,
 )
-from arthouse.main import app
 from arthouse.routes import pages
 
 
@@ -68,7 +68,7 @@ def _enrich_film(
     rebuild_descriptors(engine)
 
 
-def _override_db(engine: Engine) -> None:
+def _override_db(app: FastAPI, engine: Engine) -> None:
     def session_factory() -> Iterator[Session]:
         with Session(engine) as session:
             yield session
@@ -76,7 +76,7 @@ def _override_db(engine: Engine) -> None:
     app.dependency_overrides[get_db] = session_factory
 
 
-def _clear_override() -> None:
+def _clear_override(app: FastAPI) -> None:
     app.dependency_overrides.pop(get_db)
 
 
@@ -135,14 +135,16 @@ def test_reviews_are_parsed_and_cleaned(library_db: Engine) -> None:
     assert items["Fixture Best Album"].review is None
 
 
-async def test_detail_page_shows_review(client: httpx.AsyncClient, library_db: Engine) -> None:
+async def test_detail_page_shows_review(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
     with Session(library_db) as db:
         film = next(i for i in query_items(db) if i.title == "Fixture Film A")
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         response = await client.get(f"/library/{film.id}")
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert response.status_code == 200
     assert "Review" in response.text
     assert "A fixture review." in response.text
@@ -151,7 +153,7 @@ async def test_detail_page_shows_review(client: httpx.AsyncClient, library_db: E
 
 
 async def test_detail_page_shows_synopsis_and_genres(
-    client: httpx.AsyncClient, library_db: Engine
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
 ) -> None:
     _enrich_film(
         library_db,
@@ -162,11 +164,11 @@ async def test_detail_page_shows_synopsis_and_genres(
     )
     with Session(library_db) as db:
         film = next(i for i in query_items(db) if i.title == "Fixture Film A")
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         response = await client.get(f"/library/{film.id}")
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert response.status_code == 200
     assert "Synopsis" in response.text
     assert "A fixture synopsis." in response.text
@@ -182,27 +184,29 @@ async def test_detail_page_shows_synopsis_and_genres(
 
 
 async def test_detail_page_omits_synopsis_when_unenriched(
-    client: httpx.AsyncClient, library_db: Engine
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
 ) -> None:
     with Session(library_db) as db:
         film = next(i for i in query_items(db) if i.title == "Fixture Film B")
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         response = await client.get(f"/library/{film.id}")
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert response.status_code == 200
     assert "Synopsis" not in response.text
     assert "Descriptors" not in response.text
 
 
-async def test_film_grid_shows_genre_tags(client: httpx.AsyncClient, library_db: Engine) -> None:
+async def test_film_grid_shows_genre_tags(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
     _enrich_film(library_db, "https://boxd.it/aaa", "A fixture synopsis.", ["Drama"])
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         response = await client.get("/library?tab=film")
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert response.status_code == 200
     assert "Drama" in response.text
     assert "Fixture Director" in response.text  # director stands in for creator
@@ -210,7 +214,7 @@ async def test_film_grid_shows_genre_tags(client: httpx.AsyncClient, library_db:
 
 
 async def test_library_filters_films_by_descriptor(
-    client: httpx.AsyncClient, library_db: Engine
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
 ) -> None:
     _enrich_film(
         library_db,
@@ -226,7 +230,7 @@ async def test_library_filters_films_by_descriptor(
         ["Drama"],
         keywords=["neo-noir"],
     )
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         shared = await client.get("/library", params={"tab": "film", "descriptor": "neo-noir"})
         unique = await client.get("/library", params={"tab": "film", "descriptor": "melancholy"})
@@ -235,7 +239,7 @@ async def test_library_filters_films_by_descriptor(
             params={"tab": "film", "q": "film b", "descriptor": "neo-noir"},
         )
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert shared.status_code == 200
     assert "Fixture Film A" in shared.text
     assert "Fixture Film B" in shared.text
@@ -254,40 +258,42 @@ async def test_library_filters_films_by_descriptor(
 
 
 async def test_descriptor_filter_is_film_only(
-    client: httpx.AsyncClient, library_db: Engine
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
 ) -> None:
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         response = await client.get("/library", params={"tab": "music", "descriptor": "neo-noir"})
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert response.status_code == 200
     assert "Fixture Album" in response.text
     assert 'id="descriptor-filter"' not in response.text
 
 
 async def test_detail_page_omits_empty_review(
-    client: httpx.AsyncClient, library_db: Engine
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
 ) -> None:
     with Session(library_db) as db:
         album = next(i for i in query_items(db) if i.title == "Fixture Best Album")
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         response = await client.get(f"/library/{album.id}")
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert response.status_code == 200
     assert "Review" not in response.text
 
 
-async def test_detail_page_shows_provenance(client: httpx.AsyncClient, library_db: Engine) -> None:
+async def test_detail_page_shows_provenance(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
     with Session(library_db) as db:
         album = next(i for i in query_items(db) if i.title == "Fixture Album")
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         response = await client.get(f"/library/{album.id}")
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert response.status_code == 200
     assert "Fixture Album" in response.text
     assert "rateyourmusic" in response.text  # platform
@@ -297,30 +303,32 @@ async def test_detail_page_shows_provenance(client: httpx.AsyncClient, library_d
 
 
 async def test_detail_page_converts_native_rating(
-    client: httpx.AsyncClient, library_db: Engine
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
 ) -> None:
     with Session(library_db) as db:
         film = next(i for i in query_items(db) if i.title == "Fixture Film A")
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         response = await client.get(f"/library/{film.id}")
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert response.status_code == 200
     assert "4.5" in response.text  # native stars
     assert "9/10" in response.text  # normalized
     assert "2026-02-10" in response.text  # rating date
 
 
-async def test_unknown_item_404s(client: httpx.AsyncClient, library_db: Engine) -> None:
+async def test_unknown_item_404s(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
     with Session(library_db) as db:
         known = query_item(db, 1)
     assert known is not None
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         response = await client.get(f"/library/{known.id + 999}")
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert response.status_code == 404
 
 
@@ -363,13 +371,13 @@ def test_build_db_tolerates_missing_data_dir(tmp_path: Path) -> None:
 
 
 async def test_library_page_shows_default_music_tab(
-    client: httpx.AsyncClient, library_db: Engine
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
 ) -> None:
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         response = await client.get("/library")
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert response.status_code == 200
     assert "Fixture Album" in response.text
     assert "Fixture Film A" not in response.text  # only the active tab renders
@@ -378,15 +386,15 @@ async def test_library_page_shows_default_music_tab(
 
 
 async def test_library_tab_param_switches_category(
-    client: httpx.AsyncClient, library_db: Engine
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
 ) -> None:
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         films = await client.get("/library?tab=film")
         books = await client.get("/library?tab=book")
         bogus = await client.get("/library?tab=bogus")
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert films.status_code == 200
     assert "Fixture Film A" in films.text
     assert "Fixture Album" not in films.text
@@ -395,12 +403,14 @@ async def test_library_tab_param_switches_category(
     assert bogus.status_code == 404
 
 
-async def test_library_tabs_use_htmx_swap(client: httpx.AsyncClient, library_db: Engine) -> None:
-    _override_db(library_db)
+async def test_library_tabs_use_htmx_swap(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    _override_db(test_app, library_db)
     try:
         response = await client.get("/library")
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert 'hx-target="#library-region"' in response.text
     assert 'hx-select="#library-region"' in response.text
     assert 'hx-push-url="true"' in response.text
@@ -408,15 +418,15 @@ async def test_library_tabs_use_htmx_swap(client: httpx.AsyncClient, library_db:
 
 
 async def test_oob_hidden_inputs_keep_their_target_ids(
-    client: httpx.AsyncClient, library_db: Engine
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
 ) -> None:
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         response = await client.get(
             "/library", params={"tab": "book"}, headers={"HX-Request": "true"}
         )
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert response.status_code == 200
     # htmx replaces the target with a clone of the OOB element, so the element
     # must carry the same id or the next swap silently misses (the search form
@@ -436,17 +446,20 @@ async def test_oob_hidden_inputs_keep_their_target_ids(
 
 
 async def test_library_paginates_the_grid(
-    client: httpx.AsyncClient, library_db: Engine, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient,
+    library_db: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    test_app: FastAPI,
 ) -> None:
     monkeypatch.setattr(pages, "PAGE_SIZE", 1)
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         first = await client.get("/library", params={"tab": "film", "page": 1})
         second = await client.get("/library", params={"tab": "film", "page": 2})
         clamped = await client.get("/library", params={"tab": "film", "page": 99})
         low = await client.get("/library", params={"tab": "film", "page": 0})
     finally:
-        _clear_override()
+        _clear_override(test_app)
     titles = ("Fixture Film A", "Fixture Film B")
     first_titles = {title for title in titles if title in first.text}
     second_titles = {title for title in titles if title in second.text}
@@ -460,30 +473,33 @@ async def test_library_paginates_the_grid(
 
 
 async def test_pagination_preserves_the_descriptor_filter(
-    client: httpx.AsyncClient, library_db: Engine, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient,
+    library_db: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    test_app: FastAPI,
 ) -> None:
     _enrich_film(library_db, "https://boxd.it/aaa", "A.", ["Drama"], keywords=["neo-noir"])
     _enrich_film(library_db, "https://boxd.it/bbb", "B.", ["Drama"], keywords=["neo-noir"])
     monkeypatch.setattr(pages, "PAGE_SIZE", 1)
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         response = await client.get("/library", params={"tab": "film", "descriptor": "neo-noir"})
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert response.status_code == 200
     assert "Page 1 of 2" in response.text
     assert "&amp;page=2&amp;descriptor=neo-noir" in response.text
 
 
 async def test_search_filters_titles_in_the_active_tab(
-    client: httpx.AsyncClient, library_db: Engine
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
 ) -> None:
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         films = await client.get("/library", params={"tab": "film", "q": "film a"})
         music = await client.get("/library", params={"tab": "music", "q": "film a"})
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert films.status_code == 200
     assert "Fixture Film A" in films.text
     assert "Fixture Film B" not in films.text
@@ -491,48 +507,54 @@ async def test_search_filters_titles_in_the_active_tab(
     assert "No titles match" in music.text  # search does not cross tabs
 
 
-async def test_search_is_case_insensitive(client: httpx.AsyncClient, library_db: Engine) -> None:
-    _override_db(library_db)
+async def test_search_is_case_insensitive(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    _override_db(test_app, library_db)
     try:
         response = await client.get("/library", params={"tab": "film", "q": "FIXTURE FILM B"})
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert "Fixture Film B" in response.text
     assert "Fixture Film A" not in response.text
 
 
-async def test_search_matches_titles_only(client: httpx.AsyncClient, library_db: Engine) -> None:
-    _override_db(library_db)
+async def test_search_matches_titles_only(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    _override_db(test_app, library_db)
     try:
         # "Fixture Artist" is a creator, not a title; review text is ignored too.
         creators = await client.get("/library", params={"tab": "music", "q": "fixture artist"})
         reviews = await client.get("/library", params={"tab": "book", "q": "markup"})
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert "No titles match" in creators.text
     assert "No titles match" in reviews.text
 
 
 async def test_search_keeps_query_in_tab_links(
-    client: httpx.AsyncClient, library_db: Engine
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
 ) -> None:
-    _override_db(library_db)
+    _override_db(test_app, library_db)
     try:
         response = await client.get("/library", params={"tab": "film", "q": "fixture"})
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert "q=fixture" in response.text  # switching tabs keeps the search
     assert 'name="q"' in response.text  # the box lives outside the swapped region
 
 
-async def test_library_page_empty_when_no_data(client: httpx.AsyncClient, tmp_path: Path) -> None:
+async def test_library_page_empty_when_no_data(
+    client: httpx.AsyncClient, tmp_path: Path, test_app: FastAPI
+) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'empty.db'}")
     build_db(engine, tmp_path / "nope")
-    _override_db(engine)
+    _override_db(test_app, engine)
     try:
         response = await client.get("/library")
     finally:
-        _clear_override()
+        _clear_override(test_app)
     assert response.status_code == 200
     assert "0 rated items" in response.text
     assert "Nothing here yet." in response.text

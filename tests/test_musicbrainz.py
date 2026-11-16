@@ -205,13 +205,15 @@ def test_release_group_detail_requests_genres_and_tags() -> None:
     assert "artist-credit" not in group
 
 
-def test_artist_detail_requests_genres_and_tags() -> None:
+def test_artist_detail_requests_genres_only() -> None:
     payload = _fixture("artist.json")
     mbid = "561d854a-6a28-4aa7-8c99-323e6ce46c2a"
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == f"/ws/2/artist/{mbid}"
-        assert request.url.params["inc"] == "genres+tags"
+        # Artist tags are deliberately not fetched: they describe a career,
+        # not the album being enriched.
+        assert request.url.params["inc"] == "genres"
         return httpx.Response(200, json=payload)
 
     with _client(handler) as client:
@@ -219,7 +221,6 @@ def test_artist_detail_requests_genres_and_tags() -> None:
 
     assert artist.get("name") == "Miles Davis"
     assert "jazz" in {genre["name"] for genre in artist.get("genres", [])}
-    assert "jazz" in {tag["name"] for tag in artist.get("tags", [])}
 
 
 def test_query_methods_share_the_one_request_per_second_throttle() -> None:

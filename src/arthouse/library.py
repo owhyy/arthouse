@@ -113,12 +113,31 @@ class ItemMeta(Base):
         return PROVIDER_LABELS.get(self.provider, self.provider)
 
 
-class ItemTag(Base):
-    """One raw tag from an enrichment provider.
+class ItemGenre(Base):
+    """One display genre for an item.
 
-    `origin` says what kind of tag it is (TMDB genre vs keyword, MusicBrainz
-    release-group vs artist tag, OpenLibrary subject); `provider` says where it
-    came from. Raw tags stay the source of truth for the derived descriptors.
+    Genres are kept apart from descriptor tags because they are shelf data,
+    not vocabulary input. `artist_level` marks the fallback: the work itself
+    had no genres, so the artist's were used and the UI may warn that they are
+    approximate.
+    """
+
+    __tablename__: str = "item_genre"
+
+    source: Mapped[str] = mapped_column(primary_key=True)
+    source_id: Mapped[str] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(primary_key=True)
+    genre: Mapped[str] = mapped_column(primary_key=True)
+    artist_level: Mapped[bool] = mapped_column(default=False)
+
+
+class ItemTag(Base):
+    """One raw descriptor label from an enrichment provider.
+
+    Genres live in `item_genre`; this table holds only labels that the closed
+    vocabulary may map (TMDB keywords, MusicBrainz tags, OpenLibrary subjects).
+    The provider's own word for them is deliberately not stored. Raw tags stay
+    the source of truth for the derived descriptors.
     """
 
     __tablename__: str = "item_tag"
@@ -126,7 +145,6 @@ class ItemTag(Base):
     source: Mapped[str] = mapped_column(primary_key=True)
     source_id: Mapped[str] = mapped_column(primary_key=True)
     provider: Mapped[str] = mapped_column(primary_key=True)
-    origin: Mapped[str] = mapped_column(primary_key=True)
     tag: Mapped[str] = mapped_column(primary_key=True)
 
 
@@ -263,7 +281,7 @@ def drop_legacy_enrichment(engine: Engine) -> None:
     They are regenerable from the providers, so dropping is cheaper and simpler
     than a schema migration. The removed `film_*` tables are the signal that
     this is an old database; clearing `item_meta`/`item_tag` prevents duplicate
-    keys when enrichment is re-run. Re-run `python -m arthouse.enrich` to refill
+    keys when enrichment is re-run. Re-run `python -m arthouse.enrich_films` to refill
     them.
     """
     inspector = inspect(engine)
@@ -274,7 +292,7 @@ def drop_legacy_enrichment(engine: Engine) -> None:
         for table in legacy:
             if inspector.has_table(table):
                 conn.execute(text(f"DROP TABLE {table}"))
-        for table in ("item_meta", "item_tag"):
+        for table in ("item_meta", "item_tag", "item_genre"):
             if inspector.has_table(table):
                 conn.execute(text(f"DELETE FROM {table}"))
 
@@ -401,19 +419,18 @@ def query_item(db: Session, item_id: int) -> Item | None:
 
 
 def query_item_meta(db: Session, source: str, source_id: str) -> tuple[ItemMeta, list[str]] | None:
-    """Provider metadata and genre tags for one item, or None when unenriched."""
+    """Provider metadata and display genres for one item, or None when unenriched."""
     meta = db.get(ItemMeta, (source, source_id))
     if meta is None:
         return None
     genres = list(
         db.scalars(
-            select(ItemTag.tag)
+            select(ItemGenre.genre)
             .where(
-                ItemTag.source == source,
-                ItemTag.source_id == source_id,
-                ItemTag.origin == "genre",
+                ItemGenre.source == source,
+                ItemGenre.source_id == source_id,
             )
-            .order_by(ItemTag.tag)
+            .order_by(ItemGenre.genre)
         )
     )
     return meta, genres
@@ -425,17 +442,17 @@ def query_item_credits(db: Session) -> dict[str, str]:
 
 
 def query_item_genres(db: Session, media_type: str) -> dict[str, list[str]]:
-    """Genre tags keyed by platform id — one query for the whole grid."""
+    """Display genres keyed by platform id — one query for the whole grid."""
     genres: dict[str, list[str]] = {}
     rows = db.execute(
-        select(ItemTag.source_id, ItemTag.tag)
+        select(ItemGenre.source_id, ItemGenre.genre)
         .join(
             Item,
-            and_(Item.source == ItemTag.source, Item.source_id == ItemTag.source_id),
+            and_(Item.source == ItemGenre.source, Item.source_id == ItemGenre.source_id),
         )
-        .where(Item.media_type == media_type, ItemTag.origin == "genre")
-        .order_by(ItemTag.tag)
+        .where(Item.media_type == media_type)
+        .order_by(ItemGenre.genre)
     ).all()
-    for source_id, tag in rows:
-        genres.setdefault(source_id, []).append(tag)
+    for source_id, genre in rows:
+        genres.setdefault(source_id, []).append(genre)
     return genres

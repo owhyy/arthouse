@@ -20,18 +20,6 @@ from arthouse.config import get_settings
 from arthouse.library import Base, Item, ItemDescriptor, ItemTag
 from arthouse.vocab import FACETS, Facet, lookup
 
-# Which raw tag origins feed descriptors, per medium. TMDB genres are
-# display-only for films; descriptors come from community keywords. Media
-# without a policy (music, books) accept every origin until their adapters
-# narrow it down.
-_DESCRIPTOR_ORIGINS: dict[str, tuple[str, ...]] = {"film": ("keyword",)}
-
-
-def is_descriptor_origin(media_type: str, origin: str) -> bool:
-    """Whether a raw tag origin feeds descriptors for this medium."""
-    origins = _DESCRIPTOR_ORIGINS.get(media_type)
-    return origins is None or origin in origins
-
 
 @dataclass
 class TaggingStats:
@@ -71,7 +59,6 @@ def rebuild_descriptors(engine: Engine) -> TaggingStats:
                 Item.media_type,
                 ItemTag.source,
                 ItemTag.source_id,
-                ItemTag.origin,
                 ItemTag.tag,
             ).join(
                 Item,
@@ -84,9 +71,7 @@ def rebuild_descriptors(engine: Engine) -> TaggingStats:
 
         seen: Counter[str] = Counter()
         hit: Counter[str] = Counter()
-        for media_type, source, source_id, origin, tag in rows:
-            if not is_descriptor_origin(media_type, origin):
-                continue
+        for media_type, source, source_id, tag in rows:
             considered += 1
             seen[media_type] += 1
             descriptor = lookup(tag)

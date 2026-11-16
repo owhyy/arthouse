@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from arthouse.deps import get_db
 from arthouse.library import (
     Base,
+    ItemGenre,
     ItemMeta,
     ItemTag,
     build_db,
@@ -46,12 +47,11 @@ def _enrich_film(
         )
         for tag in genres:
             db.add(
-                ItemTag(
+                ItemGenre(
                     source="letterboxd",
                     source_id=source_id,
                     provider="tmdb",
-                    origin="genre",
-                    tag=tag,
+                    genre=tag,
                 )
             )
         for keyword in keywords or []:
@@ -60,7 +60,6 @@ def _enrich_film(
                     source="letterboxd",
                     source_id=source_id,
                     provider="tmdb",
-                    origin="keyword",
                     tag=keyword,
                 )
             )
@@ -268,7 +267,6 @@ async def test_descriptor_filter_applies_to_every_medium(
                 source="rateyourmusic",
                 source_id="1",
                 provider="musicbrainz",
-                origin="release_group",
                 tag="melancholy",
             )
         )
@@ -296,7 +294,6 @@ async def test_detail_chips_link_to_the_items_own_tab(
                 source="rateyourmusic",
                 source_id="1",
                 provider="musicbrainz",
-                origin="release_group",
                 tag="melancholy",
             )
         )
@@ -392,7 +389,7 @@ def test_build_db_drops_legacy_enrichment(tmp_path: Path) -> None:
         conn.execute(
             text(
                 "INSERT INTO item_tag VALUES "
-                + "('letterboxd', 'https://boxd.it/old', 'tmdb', 'keyword', 'old')"
+                + "('letterboxd', 'https://boxd.it/old', 'tmdb', 'old')"
             )
         )
     build_db(engine, tmp_path / "nope")  # startup drops/reset the pre-refactor tables
@@ -406,6 +403,35 @@ def test_build_db_drops_legacy_enrichment(tmp_path: Path) -> None:
         assert db.scalar(select(func.count()).select_from(ItemMeta)) == 0
     build_db(engine, tmp_path / "nope")  # a second startup keeps the new tables
     assert inspect(engine).has_table("item_meta")
+
+
+def test_genres_never_feed_the_vocabulary(library_db: Engine) -> None:
+    with Session(library_db) as db:
+        for name, artist_level in (("Drama", False), ("art pop", True)):
+            db.add(
+                ItemGenre(
+                    source="letterboxd",
+                    source_id="https://boxd.it/aaa",
+                    provider="tmdb",
+                    genre=name,
+                    artist_level=artist_level,
+                )
+            )
+        db.add(
+            ItemTag(
+                source="letterboxd",
+                source_id="https://boxd.it/aaa",
+                provider="tmdb",
+                tag="melancholy",
+            )
+        )
+        db.commit()
+
+    stats = rebuild_descriptors(library_db)
+
+    assert stats.tags == 1
+    assert stats.mapped == 1
+    assert stats.pairs == 1
 
 
 def test_build_db_tolerates_missing_data_dir(tmp_path: Path) -> None:

@@ -1,6 +1,6 @@
 """TMDB film enrichment: match films, store description and genre tags.
 
-Run with: uv run python -m arthouse.enrich [--limit N]
+Run with: uv run python -m arthouse.enrich_films [--limit N]
 
 Enrichment is keyed by (source, source_id) so it survives library rebuilds;
 re-runs skip films that are already enriched.
@@ -17,7 +17,7 @@ from sqlalchemy import Engine, create_engine, func, select
 from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
-from arthouse.library import Item, ItemMeta, ItemTag, normalize_title
+from arthouse.library import Item, ItemGenre, ItemMeta, ItemTag, normalize_title
 from arthouse.tagging import rebuild_descriptors
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
@@ -114,7 +114,7 @@ def search_queries(title: str) -> list[str]:
     return queries
 
 
-def find_film(client: TmdbLike, title: str, year: int | None) -> TmdbMovie | None:
+def find_film(client: FilmClient, title: str, year: int | None) -> TmdbMovie | None:
     """Search, then match exactly; try shorter queries before giving up."""
     for query in search_queries(title):
         if match := match_film(client.search_movie(query, year), title, year):
@@ -122,7 +122,7 @@ def find_film(client: TmdbLike, title: str, year: int | None) -> TmdbMovie | Non
     return None
 
 
-class TmdbLike(Protocol):
+class FilmClient(Protocol):
     def search_movie(self, title: str, year: int | None) -> list[TmdbMovie]: ...
 
     def genre_map(self) -> dict[int, str]: ...
@@ -213,7 +213,7 @@ class EnrichStats:
     unmatched: list[str] = field(default_factory=list)
 
 
-def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> EnrichStats:
+def enrich_films(engine: Engine, client: FilmClient, limit: int | None = None) -> EnrichStats:
     """Enrich up to `limit` not-yet-enriched films; commits after each match."""
     stats = EnrichStats()
     genre_names = client.genre_map()
@@ -257,7 +257,6 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
                         source=meta.source,
                         source_id=meta.source_id,
                         provider="tmdb",
-                        origin="keyword",
                         tag=name,
                     )
                 )
@@ -288,12 +287,11 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
             for genre_id in match.get("genre_ids", []):
                 if name := genre_names.get(genre_id):
                     db.add(
-                        ItemTag(
+                        ItemGenre(
                             source=film.source,
                             source_id=film.source_id,
                             provider="tmdb",
-                            origin="genre",
-                            tag=name,
+                            genre=name,
                         )
                     )
             for keyword in dict.fromkeys(client.keywords(match["id"])):
@@ -302,7 +300,6 @@ def enrich_films(engine: Engine, client: TmdbLike, limit: int | None = None) -> 
                         source=film.source,
                         source_id=film.source_id,
                         provider="tmdb",
-                        origin="keyword",
                         tag=keyword,
                     )
                 )
@@ -325,7 +322,7 @@ class KeywordReport:
 
 def keyword_report(engine: Engine, top: int = 25) -> KeywordReport:
     """Count keyword coverage and the most common descriptors."""
-    keywords = (ItemTag.origin == "keyword") & (ItemTag.provider == "tmdb")
+    keywords = ItemTag.provider == "tmdb"
     tmdb = ItemMeta.provider == "tmdb"
     with Session(engine) as db:
         films = db.scalar(select(func.count()).select_from(ItemMeta).where(tmdb)) or 0

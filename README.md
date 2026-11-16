@@ -61,17 +61,16 @@ director, and keywords — so they can feed the recommender. Set
 once:
 
 ```bash
-uv run python -m arthouse.enrich            # all not-yet-enriched films
-uv run python -m arthouse.enrich --limit 5  # small batch
-uv run python -m arthouse.enrich --report   # keyword coverage + top terms
+uv run python -m arthouse.enrich_films            # all not-yet-enriched films
+uv run python -m arthouse.enrich_films --limit 5  # small batch
+uv run python -m arthouse.enrich_films --report   # keyword coverage + top terms
 ```
 
 Matching is strict: normalized exact title (or TMDB `original_title`) with a
 ±1-year tolerance; very long titles retry with the part before the first comma.
 Anything else is reported as unmatched rather than guessed — wrong genres are
-worse than missing ones. Results live in `item_meta` plus `item_tag`
-(`provider='tmdb'`, `origin='genre'|'keyword'`), keyed by
-`(source, source_id)`, so restarting the app (which rebuilds only `items`)
+worse than missing ones. Results live in `item_meta` plus `item_genre`, keyed
+by `(source, source_id)`, so restarting the app (which rebuilds only `items`)
 never discards them; re-runs skip already-enriched films.
 `item_meta.tags_fetched` records the attempt, so a film TMDB has no
 keywords for is not refetched every run. TV entries from the Letterboxd export
@@ -79,8 +78,10 @@ keywords for is not refetched every run. TV entries from the Letterboxd export
 
 The enrichment schema is shared by every medium: `item_meta` stores
 provider-neutral fields (`provider`, `external_id`, `summary`, `image_path`,
-`credit`, `tags_fetched`), `item_tag` stores raw tags from any provider, and
-`item_descriptor` holds the descriptors those tags map onto.
+`credit`, `tags_fetched`), `item_genre` stores display genres (with
+`artist_level` marking the MusicBrainz artist fallback), `item_tag` stores raw
+descriptor labels from any provider, and `item_descriptor` holds the
+descriptors those labels map onto.
 
 ### Descriptor vocabulary
 
@@ -121,7 +122,7 @@ uv run python -m arthouse.tagging --report           # per-medium coverage
 uv run python -m arthouse.tagging --report --media film --unmapped 40
 ```
 
-The app rebuilds the table at startup and at the end of `arthouse.enrich`, so the
+The app rebuilds the table at startup and at the end of `arthouse.enrich_films`, so the
 detail page and the filter never serve a stale vocabulary. The unmapped list is
 the worklist: add an alias, re-run, coverage goes up. Current snapshot: 1,776 of
 5,227 film keyword occurrences (**34.0%**) map onto 1,522 item-descriptor pairs

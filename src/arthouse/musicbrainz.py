@@ -45,24 +45,17 @@ class Genre(TypedDict):
     count: int
 
 
-class ArtistRef(TypedDict):
-    """Just enough of an artist to fetch its genres and tags."""
-
-    id: str
-
-
 class ArtistCredit(TypedDict):
     """One credited artist; `name` is the credited form, not the canonical one."""
 
     name: str
-    artist: NotRequired[ArtistRef]
+    artist: NotRequired[dict[str, str]]
 
 
 class Artist(TypedDict, total=False):
-    """An artist's own genres and tags, used only as a fallback."""
+    """An artist's own genres, used only as a display fallback."""
 
     name: str
-    tags: list[Tag]
     genres: list[Genre]
 
 
@@ -96,7 +89,7 @@ def _quoted(term: str) -> str:
     return term.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _release_year(group: ReleaseGroup) -> int | None:
+def release_year(group: ReleaseGroup) -> int | None:
     """The year of the group's first release, when MusicBrainz dates it."""
     date = group.get("first-release-date") or ""
     return int(date[:4]) if date[:4].isdigit() else None
@@ -128,7 +121,7 @@ def match_release_group(
     dated = [
         (abs(released - year), group)
         for group in pool
-        if (released := _release_year(group)) is not None
+        if (released := release_year(group)) is not None
     ]
     if not dated:
         # An undated hit cannot be checked against the item's year, and guessing
@@ -158,7 +151,7 @@ def artist_queries(creator: str) -> list[str]:
 
 
 def find_release_group(
-    client: MusicBrainzLike, title: str, creator: str, year: int | None
+    client: ReleaseGroupSearcher, title: str, creator: str, year: int | None
 ) -> ReleaseGroup | None:
     """Search each artist variant, then match exactly.
 
@@ -176,10 +169,20 @@ def find_release_group(
     return None
 
 
-class MusicBrainzLike(Protocol):
+class ReleaseGroupSearcher(Protocol):
+    """Anything that can search release groups, whatever the upstream API."""
+
     def search_release_groups(
         self, title: str, artist: str = "", *, limit: int = SEARCH_LIMIT
     ) -> list[ReleaseGroup]: ...
+
+
+class MusicClient(ReleaseGroupSearcher, Protocol):
+    """Everything one album enrichment needs from a music provider."""
+
+    def release_group(self, mbid: str) -> ReleaseGroup: ...
+
+    def artist(self, mbid: str) -> Artist: ...
 
 
 class MusicBrainzClient:
@@ -283,6 +286,6 @@ class MusicBrainzClient:
         return payload
 
     def artist(self, mbid: str) -> Artist:
-        """One artist with genres and tags, used when a release group has none."""
-        payload = cast(Artist, self._get(f"/artist/{mbid}", {"inc": "genres+tags"}))
+        """One artist's genres, used when a release group has none of its own."""
+        payload = cast(Artist, self._get(f"/artist/{mbid}", {"inc": "genres"}))
         return payload

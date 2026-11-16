@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # TMDB: v3 API key or v4 read access token (Bearer), for film genres.
     tmdb_api_key: str = ""
 
+    # MusicBrainz requires contact info in the User-Agent; 1 request/second.
+    musicbrainz_user_agent: str = "arthouse/0.1 ( https://github.com/owhyy/arthouse )"
+
     # Server
     host: str = "127.0.0.1"
     port: int = 8000

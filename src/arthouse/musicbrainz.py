@@ -1,18 +1,21 @@
-"""MusicBrainz music enrichment: client, transport policy, and typed queries.
+"""MusicBrainz music enrichment: client, transport policy, queries and matching.
 
 MusicBrainz asks for a contact-bearing User-Agent and at most one request per
-second. This module owns that policy and the read queries the enrichment pass
-builds on; matching and the batch itself land in later steps.
+second. This module owns that policy, the read queries, and the strict matcher
+that turns search hits into one release group; the batch itself lands later.
 """
 
+import html
+import re
 import time
 from collections.abc import Callable
 from types import TracebackType
-from typing import NotRequired, Self, TypedDict, cast
+from typing import NotRequired, Protocol, Self, TypedDict, cast
 
 import httpx
 
 from arthouse.config import get_settings
+from arthouse.library import normalize_title
 
 MUSICBRAINZ_BASE_URL = "https://musicbrainz.org/ws/2/"
 MAX_ATTEMPTS = 4
@@ -71,6 +74,7 @@ ReleaseGroup = TypedDict(
     {
         "id": str,
         "title": str,
+        "primary-type": NotRequired[str],
         "first-release-date": NotRequired[str],
         "artist-credit": NotRequired[list[ArtistCredit]],
         "genres": NotRequired[list[Genre]],
@@ -88,8 +92,94 @@ ReleaseGroupSearch = TypedDict(
 
 
 def _quoted(term: str) -> str:
-    """Escape a Lucene term, so a quote in a title cannot break the query."""
+    """Escape a term, so a quote in a title cannot break the query."""
     return term.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _release_year(group: ReleaseGroup) -> int | None:
+    """The year of the group's first release, when MusicBrainz dates it."""
+    date = group.get("first-release-date") or ""
+    return int(date[:4]) if date[:4].isdigit() else None
+
+
+def match_release_group(
+    hits: list[ReleaseGroup], title: str, year: int | None
+) -> ReleaseGroup | None:
+    """Pick the one candidate whose title matches exactly.
+
+    A hit is only accepted when its normalized title equals the item's. An album
+    wins over a single or EP of the same name, because the library is albums and
+    a same-year single would otherwise make the title ambiguous. Year is a
+    tie-break rather than a filter, since reissues move the date by more than a
+    year; a tie that survives both rules is reported as a miss, never guessed.
+    """
+    wanted = normalize_title(html.unescape(title))
+    if not wanted:
+        # A title made only of punctuation has no usable key: matching on ""
+        # would accept any other symbol-only title, so report the miss instead.
+        return None
+    exact = [hit for hit in hits if normalize_title(html.unescape(hit["title"])) == wanted]
+    if not exact:
+        return None
+    albums = [hit for hit in exact if hit.get("primary-type") == "Album"]
+    pool = albums or exact
+    if year is None:
+        return pool[0] if len(pool) == 1 else None
+    dated = [
+        (abs(released - year), group)
+        for group in pool
+        if (released := _release_year(group)) is not None
+    ]
+    if not dated:
+        # An undated hit cannot be checked against the item's year, and guessing
+        # would be worse than reporting the miss.
+        return None
+    best = min(distance for distance, _ in dated)
+    winners = [group for distance, group in dated if distance == best]
+    return winners[0] if len(winners) == 1 else None
+
+
+# Credits join artists with these; a band name such as "Black Country, New Road"
+# contains one too, which is why the full credit is always tried first.
+_ARTIST_SPLIT = re.compile(r"\s+(?:featuring|&|and)\s+|,", re.IGNORECASE)
+
+
+def artist_queries(creator: str) -> list[str]:
+    """The full credit first, then its parts, for the search artist clause.
+
+    Bodies like "Black Country, New Road" and "Tyler, The Creator" are single
+    artist names, so the whole credit is always tried first; the split is only
+    a fallback for real joins such as "Boldy James & Sterling Toles", whose
+    exact string matches nothing in MusicBrainz.
+    """
+    full = html.unescape(creator).strip()
+    parts = [part.strip() for part in _ARTIST_SPLIT.split(full) if part.strip()]
+    return list(dict.fromkeys([full, *parts]))
+
+
+def find_release_group(
+    client: MusicBrainzLike, title: str, creator: str, year: int | None
+) -> ReleaseGroup | None:
+    """Search each artist variant, then match exactly.
+
+    The title is unescaped before it becomes a query term: RYM stores
+    `&#34;Heroes&#34;`, it gets tokenized into `34 heroes 34`, which
+    matches nothing. There is deliberately no artist-less retry: matching checks
+    the title and year only, so dropping the artist clause could accept a
+    different artist's album with the same name.
+    """
+    query_title = html.unescape(title)
+    for artist in artist_queries(creator):
+        hits = client.search_release_groups(query_title, artist)
+        if match := match_release_group(hits, title, year):
+            return match
+    return None
+
+
+class MusicBrainzLike(Protocol):
+    def search_release_groups(
+        self, title: str, artist: str = "", *, limit: int = SEARCH_LIMIT
+    ) -> list[ReleaseGroup]: ...
 
 
 class MusicBrainzClient:

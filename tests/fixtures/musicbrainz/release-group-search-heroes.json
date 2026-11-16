@@ -1,0 +1,1037 @@
+{
+  "created": "2026-11-16T10:30:51.302Z",
+  "count": 4,
+  "offset": 0,
+  "release-groups": [
+    {
+      "id": "1f5ef8d3-10ca-30eb-b41e-85b16987d412",
+      "type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "score": 100,
+      "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "artist-credit-id": "c78939a9-a38a-3669-a8bf-d41a4287f304",
+      "count": 29,
+      "title": "\u201cHeroes\u201d",
+      "first-release-date": "1977-10-14",
+      "primary-type": "Album",
+      "artist-credit": [
+        {
+          "name": "David Bowie",
+          "artist": {
+            "id": "5441c29d-3602-4898-b1a1-b77fa23b8e50",
+            "name": "David Bowie",
+            "sort-name": "Bowie, David",
+            "disambiguation": "English singer\u2010songwriter",
+            "aliases": [
+              {
+                "sort-name": "\u30c7\u30f4\u30a3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                "name": "\u30c7\u30f4\u30a3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "locale": "ja",
+                "type": "Artist name",
+                "primary": true,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "\u30c7\u30d3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "name": "\u30c7\u30d3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "locale": "ja",
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Jones, Davy",
+                "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                "name": "Davy Jones",
+                "locale": null,
+                "type": "Artist name",
+                "primary": null,
+                "begin-date": null,
+                "end-date": "1965"
+              },
+              {
+                "sort-name": "\ub370\uc774\ube44\ub4dc \ubcf4\uc704",
+                "type-id": "1937e404-b981-3cb7-8151-4c86ebfc8d8e",
+                "name": "\ub370\uc774\ube44\ub4dc \ubcf4\uc704",
+                "locale": null,
+                "type": "Search hint",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Ziggy Stardust",
+                "name": "Ziggy Stardust",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "David Jones",
+                "type-id": "1937e404-b981-3cb7-8151-4c86ebfc8d8e",
+                "name": "David Jones",
+                "locale": null,
+                "type": "Search hint",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Jones, David Robert",
+                "type-id": "d4dcd0c0-b341-3612-a332-c0ce797b25cf",
+                "name": "David Robert Jones",
+                "locale": null,
+                "type": "Legal name",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "\u0414\u044d\u0432\u0438\u0434 \u0411\u043e\u0443\u0438",
+                "type-id": "1937e404-b981-3cb7-8151-4c86ebfc8d8e",
+                "name": "\u0414\u044d\u0432\u0438\u0434 \u0411\u043e\u0443\u0438",
+                "locale": null,
+                "type": "Search hint",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "The Thin White Duke",
+                "name": "The Thin White Duke",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Davis Bowie",
+                "name": "Davis Bowie",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Bowie",
+                "name": "Bowie",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Davie Bowie",
+                "name": "Davie Bowie",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Harry the Butcher",
+                "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                "name": "Harry the Butcher",
+                "locale": null,
+                "type": "Artist name",
+                "primary": null,
+                "begin-date": "1970-02-23",
+                "end-date": "1970-02-24"
+              }
+            ]
+          }
+        }
+      ],
+      "releases": [
+        {
+          "id": "5c8a4542-8e75-4c9a-a7f5-f78e382820a7",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "be3f3d4e-dbe3-45e4-a744-9968c472e8ae",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "c3404da8-e123-3f0c-a830-880c65026110",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "513d8241-3a33-42c6-acf0-e4234742c047",
+          "status-id": "1156806e-d06a-38bd-83f0-cf2284a808b9",
+          "title": "Heroes (live)",
+          "status": "Bootleg"
+        },
+        {
+          "id": "dd894b90-031f-3225-8b36-724da216e421",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "9427d0a7-396a-4150-bc67-4800255cf6aa",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "2b658067-0c7e-4369-bf4d-5022896da374",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "fa48c4d5-6d0a-492d-b91f-4a1f70d274f2",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "68d6add0-b185-38ad-9814-39ed5e4e231a",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "aaf9b003-2f1d-4c0e-839a-879023eacfc4",
+          "title": "\u201cHeroes\u201d"
+        },
+        {
+          "id": "4c26061a-4317-43c0-bdc7-281629542fee",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "58558cec-d9f1-40e4-a857-f7af88883c12",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "b023b861-0ae7-4058-9346-1cb9fb8a2127",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "2aca0aba-d57a-4ace-9c1a-8cb75e1a9155",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "e69dd219-e128-4589-b7b4-5cc44b83cd6f",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "e47fad0f-e324-3676-867b-f847f221c5be",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "f0a4ed57-10e0-4c37-81b4-36311dc7d4b6",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "91a2744c-111b-4e3f-82b4-626cd548a50c",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "b7794c78-e02e-4e30-b5c5-c258fd9a1d61",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "852d83b5-9bba-3672-b8d8-60bfc821ec16",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "d7fd655c-1867-3537-9363-b559004058ba",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "bdba3f99-52c8-434c-968d-b30b93dbc01e",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "b64f8485-d827-4af8-894f-6fc4f0d63e80",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "5fa8d379-c256-4c9f-bdff-4b99d830a25d",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "Take Off: \u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "1c6f8bb4-02b1-3266-8a0b-74688e2fb1f6",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "47792942-1537-4a1c-af65-23923fdbd0d3",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "e5261bc2-bad8-4480-90a0-67b5cee1a78c",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "c9f24006-f0ee-4a3c-84ec-c148c7dd7038",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "8caa9a0e-9063-3497-b73e-3165ea2f75a6",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        }
+      ],
+      "tags": [
+        {
+          "count": 4,
+          "name": "rock"
+        },
+        {
+          "count": 6,
+          "name": "electronic"
+        },
+        {
+          "count": 1,
+          "name": "alternative rock"
+        },
+        {
+          "count": 1,
+          "name": "krautrock"
+        },
+        {
+          "count": 10,
+          "name": "ambient"
+        },
+        {
+          "count": 4,
+          "name": "experimental"
+        },
+        {
+          "count": 0,
+          "name": "new wave"
+        },
+        {
+          "count": 0,
+          "name": "1977"
+        },
+        {
+          "count": 1,
+          "name": "progressive"
+        },
+        {
+          "count": 1,
+          "name": "psychedelic"
+        },
+        {
+          "count": -1,
+          "name": "glam rock"
+        },
+        {
+          "count": 10,
+          "name": "art rock"
+        },
+        {
+          "count": 1,
+          "name": "hypnotic"
+        },
+        {
+          "count": 0,
+          "name": "classic rock"
+        },
+        {
+          "count": 1,
+          "name": "abstract"
+        },
+        {
+          "count": 3,
+          "name": "experimental rock"
+        },
+        {
+          "count": 1,
+          "name": "avant-garde"
+        },
+        {
+          "count": 1,
+          "name": "ethereal"
+        },
+        {
+          "count": 1,
+          "name": "futuristic"
+        },
+        {
+          "count": 1,
+          "name": "eclectic"
+        },
+        {
+          "count": 1,
+          "name": "atmospheric"
+        },
+        {
+          "count": 1,
+          "name": "dense"
+        },
+        {
+          "count": 1,
+          "name": "complex"
+        },
+        {
+          "count": -1,
+          "name": "should be public domain"
+        },
+        {
+          "count": 1,
+          "name": "surreal"
+        },
+        {
+          "count": 1,
+          "name": "male vocalist"
+        },
+        {
+          "count": 1,
+          "name": "science fiction"
+        },
+        {
+          "count": 1,
+          "name": "quirky"
+        },
+        {
+          "count": 1,
+          "name": "mysterious"
+        },
+        {
+          "count": 1,
+          "name": "passionate"
+        },
+        {
+          "count": 1,
+          "name": "nocturnal"
+        },
+        {
+          "count": 1,
+          "name": "cold"
+        },
+        {
+          "count": 2,
+          "name": "art pop"
+        },
+        {
+          "count": -1,
+          "name": "berlin trilogy"
+        },
+        {
+          "count": 1,
+          "name": "mechanical"
+        },
+        {
+          "count": 1,
+          "name": "anxious"
+        }
+      ]
+    },
+    {
+      "id": "9eccd731-ccf8-3614-a4b8-82ec6d2d3ab5",
+      "type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+      "score": 100,
+      "primary-type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+      "artist-credit-id": "c78939a9-a38a-3669-a8bf-d41a4287f304",
+      "count": 7,
+      "title": "\u201cHeroes\u201d",
+      "first-release-date": "1977-11",
+      "primary-type": "Single",
+      "artist-credit": [
+        {
+          "name": "David Bowie",
+          "artist": {
+            "id": "5441c29d-3602-4898-b1a1-b77fa23b8e50",
+            "name": "David Bowie",
+            "sort-name": "Bowie, David",
+            "disambiguation": "English singer\u2010songwriter",
+            "aliases": [
+              {
+                "sort-name": "\u30c7\u30f4\u30a3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                "name": "\u30c7\u30f4\u30a3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "locale": "ja",
+                "type": "Artist name",
+                "primary": true,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "\u30c7\u30d3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "name": "\u30c7\u30d3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "locale": "ja",
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Jones, Davy",
+                "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                "name": "Davy Jones",
+                "locale": null,
+                "type": "Artist name",
+                "primary": null,
+                "begin-date": null,
+                "end-date": "1965"
+              },
+              {
+                "sort-name": "\ub370\uc774\ube44\ub4dc \ubcf4\uc704",
+                "type-id": "1937e404-b981-3cb7-8151-4c86ebfc8d8e",
+                "name": "\ub370\uc774\ube44\ub4dc \ubcf4\uc704",
+                "locale": null,
+                "type": "Search hint",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Ziggy Stardust",
+                "name": "Ziggy Stardust",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "David Jones",
+                "type-id": "1937e404-b981-3cb7-8151-4c86ebfc8d8e",
+                "name": "David Jones",
+                "locale": null,
+                "type": "Search hint",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Jones, David Robert",
+                "type-id": "d4dcd0c0-b341-3612-a332-c0ce797b25cf",
+                "name": "David Robert Jones",
+                "locale": null,
+                "type": "Legal name",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "\u0414\u044d\u0432\u0438\u0434 \u0411\u043e\u0443\u0438",
+                "type-id": "1937e404-b981-3cb7-8151-4c86ebfc8d8e",
+                "name": "\u0414\u044d\u0432\u0438\u0434 \u0411\u043e\u0443\u0438",
+                "locale": null,
+                "type": "Search hint",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "The Thin White Duke",
+                "name": "The Thin White Duke",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Davis Bowie",
+                "name": "Davis Bowie",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Bowie",
+                "name": "Bowie",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Davie Bowie",
+                "name": "Davie Bowie",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Harry the Butcher",
+                "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                "name": "Harry the Butcher",
+                "locale": null,
+                "type": "Artist name",
+                "primary": null,
+                "begin-date": "1970-02-23",
+                "end-date": "1970-02-24"
+              }
+            ]
+          }
+        }
+      ],
+      "releases": [
+        {
+          "id": "e1342a9f-b09a-4d62-a42f-c013a22c31f4",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "3eddf49e-a3f7-42a2-92d7-bcb263e3ad81",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "9219efef-7035-4358-b834-c5745e0e0eb1",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "d904732c-dfa4-3ee9-b6b0-e781a48acbdf",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "a8a2294f-0176-4ac0-8cf7-7fbf97976f80",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d",
+          "status": "Official"
+        },
+        {
+          "id": "9ad971db-eafb-495d-95c9-813b555edce2",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "Heroes/Helden / Heroes/H\u00e9ros",
+          "status": "Official"
+        },
+        {
+          "id": "b8e245e4-8cbd-45d4-82ed-3c4fa35dc8fb",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "Heroes / Helden / H\u00e9ros - EP",
+          "status": "Official"
+        }
+      ],
+      "tags": [
+        {
+          "count": 1,
+          "name": "rock"
+        },
+        {
+          "count": 2,
+          "name": "electronic"
+        },
+        {
+          "count": 1,
+          "name": "pop"
+        },
+        {
+          "count": 1,
+          "name": "ambient"
+        },
+        {
+          "count": 0,
+          "name": "new wave"
+        },
+        {
+          "count": 0,
+          "name": "1977"
+        },
+        {
+          "count": 3,
+          "name": "art rock"
+        },
+        {
+          "count": 1,
+          "name": "experimental rock"
+        },
+        {
+          "count": 1,
+          "name": "pop rock"
+        },
+        {
+          "count": 0,
+          "name": "should be public domain"
+        },
+        {
+          "count": 1,
+          "name": "art pop"
+        }
+      ]
+    },
+    {
+      "id": "8ac314ee-f545-4954-a1f0-08d39945c6c0",
+      "type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+      "score": 89,
+      "primary-type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+      "artist-credit-id": "c78939a9-a38a-3669-a8bf-d41a4287f304",
+      "count": 1,
+      "title": "\u201cHeroes\u201d (Klax remix)",
+      "first-release-date": "2017-09-22",
+      "primary-type": "Single",
+      "secondary-types": [
+        "Remix"
+      ],
+      "secondary-type-ids": [
+        "0c60f497-ff81-3818-befd-abfc84a4858b"
+      ],
+      "artist-credit": [
+        {
+          "name": "David Bowie",
+          "artist": {
+            "id": "5441c29d-3602-4898-b1a1-b77fa23b8e50",
+            "name": "David Bowie",
+            "sort-name": "Bowie, David",
+            "disambiguation": "English singer\u2010songwriter",
+            "aliases": [
+              {
+                "sort-name": "\u30c7\u30f4\u30a3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                "name": "\u30c7\u30f4\u30a3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "locale": "ja",
+                "type": "Artist name",
+                "primary": true,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "\u30c7\u30d3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "name": "\u30c7\u30d3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "locale": "ja",
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Jones, Davy",
+                "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                "name": "Davy Jones",
+                "locale": null,
+                "type": "Artist name",
+                "primary": null,
+                "begin-date": null,
+                "end-date": "1965"
+              },
+              {
+                "sort-name": "\ub370\uc774\ube44\ub4dc \ubcf4\uc704",
+                "type-id": "1937e404-b981-3cb7-8151-4c86ebfc8d8e",
+                "name": "\ub370\uc774\ube44\ub4dc \ubcf4\uc704",
+                "locale": null,
+                "type": "Search hint",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Ziggy Stardust",
+                "name": "Ziggy Stardust",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "David Jones",
+                "type-id": "1937e404-b981-3cb7-8151-4c86ebfc8d8e",
+                "name": "David Jones",
+                "locale": null,
+                "type": "Search hint",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Jones, David Robert",
+                "type-id": "d4dcd0c0-b341-3612-a332-c0ce797b25cf",
+                "name": "David Robert Jones",
+                "locale": null,
+                "type": "Legal name",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "\u0414\u044d\u0432\u0438\u0434 \u0411\u043e\u0443\u0438",
+                "type-id": "1937e404-b981-3cb7-8151-4c86ebfc8d8e",
+                "name": "\u0414\u044d\u0432\u0438\u0434 \u0411\u043e\u0443\u0438",
+                "locale": null,
+                "type": "Search hint",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "The Thin White Duke",
+                "name": "The Thin White Duke",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Davis Bowie",
+                "name": "Davis Bowie",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Bowie",
+                "name": "Bowie",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Davie Bowie",
+                "name": "Davie Bowie",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Harry the Butcher",
+                "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                "name": "Harry the Butcher",
+                "locale": null,
+                "type": "Artist name",
+                "primary": null,
+                "begin-date": "1970-02-23",
+                "end-date": "1970-02-24"
+              }
+            ]
+          }
+        }
+      ],
+      "releases": [
+        {
+          "id": "2c93934b-fdb2-46e7-b6fb-49498e4679b0",
+          "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+          "title": "\u201cHeroes\u201d (Klax remix)",
+          "status": "Official"
+        }
+      ]
+    },
+    {
+      "id": "9b3001c0-9a73-4251-83e1-041aeb4d3e97",
+      "type-id": "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0",
+      "score": 80,
+      "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "artist-credit-id": "c78939a9-a38a-3669-a8bf-d41a4287f304",
+      "count": 1,
+      "title": "Heroes in Concert (The Legendary Broadcast)",
+      "first-release-date": "2021-02-14",
+      "primary-type": "Album",
+      "secondary-types": [
+        "Live"
+      ],
+      "secondary-type-ids": [
+        "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0"
+      ],
+      "artist-credit": [
+        {
+          "name": "David Bowie",
+          "artist": {
+            "id": "5441c29d-3602-4898-b1a1-b77fa23b8e50",
+            "name": "David Bowie",
+            "sort-name": "Bowie, David",
+            "disambiguation": "English singer\u2010songwriter",
+            "aliases": [
+              {
+                "sort-name": "\u30c7\u30f4\u30a3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                "name": "\u30c7\u30f4\u30a3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "locale": "ja",
+                "type": "Artist name",
+                "primary": true,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "\u30c7\u30d3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "name": "\u30c7\u30d3\u30c3\u30c9\u30fb\u30dc\u30a6\u30a4",
+                "locale": "ja",
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Jones, Davy",
+                "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                "name": "Davy Jones",
+                "locale": null,
+                "type": "Artist name",
+                "primary": null,
+                "begin-date": null,
+                "end-date": "1965"
+              },
+              {
+                "sort-name": "\ub370\uc774\ube44\ub4dc \ubcf4\uc704",
+                "type-id": "1937e404-b981-3cb7-8151-4c86ebfc8d8e",
+                "name": "\ub370\uc774\ube44\ub4dc \ubcf4\uc704",
+                "locale": null,
+                "type": "Search hint",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Ziggy Stardust",
+                "name": "Ziggy Stardust",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "David Jones",
+                "type-id": "1937e404-b981-3cb7-8151-4c86ebfc8d8e",
+                "name": "David Jones",
+                "locale": null,
+                "type": "Search hint",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Jones, David Robert",
+                "type-id": "d4dcd0c0-b341-3612-a332-c0ce797b25cf",
+                "name": "David Robert Jones",
+                "locale": null,
+                "type": "Legal name",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "\u0414\u044d\u0432\u0438\u0434 \u0411\u043e\u0443\u0438",
+                "type-id": "1937e404-b981-3cb7-8151-4c86ebfc8d8e",
+                "name": "\u0414\u044d\u0432\u0438\u0434 \u0411\u043e\u0443\u0438",
+                "locale": null,
+                "type": "Search hint",
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "The Thin White Duke",
+                "name": "The Thin White Duke",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Davis Bowie",
+                "name": "Davis Bowie",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Bowie",
+                "name": "Bowie",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Davie Bowie",
+                "name": "Davie Bowie",
+                "locale": null,
+                "type": null,
+                "primary": null,
+                "begin-date": null,
+                "end-date": null
+              },
+              {
+                "sort-name": "Harry the Butcher",
+                "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                "name": "Harry the Butcher",
+                "locale": null,
+                "type": "Artist name",
+                "primary": null,
+                "begin-date": "1970-02-23",
+                "end-date": "1970-02-24"
+              }
+            ]
+          }
+        }
+      ],
+      "releases": [
+        {
+          "id": "9821f2d7-3788-4192-989a-f1cdf5f68bf6",
+          "status-id": "1156806e-d06a-38bd-83f0-cf2284a808b9",
+          "title": "Heroes in Concert (The Legendary Broadcast)",
+          "status": "Bootleg"
+        }
+      ]
+    }
+  ]
+}

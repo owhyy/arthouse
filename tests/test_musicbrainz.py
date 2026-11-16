@@ -6,7 +6,13 @@ from typing import cast
 import httpx
 import pytest
 
-from arthouse.musicbrainz import MusicBrainzClient
+from arthouse.musicbrainz import (
+    MusicBrainzClient,
+    ReleaseGroup,
+    artist_queries,
+    find_release_group,
+    match_release_group,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "musicbrainz"
 
@@ -235,3 +241,189 @@ def test_search_tolerates_an_empty_payload() -> None:
 
     with _client(handler) as client:
         assert client.search_release_groups("Nothing") == []
+
+
+def _hit(
+    title: str,
+    date: str | None = None,
+    *,
+    primary_type: str = "Album",
+    mbid: str = "00000000-0000-0000-0000-000000000000",
+) -> ReleaseGroup:
+    """A search hit with only the fields the matcher reads."""
+    hit: ReleaseGroup = {"id": mbid, "title": title}
+    if date is not None:
+        hit["first-release-date"] = date
+    if primary_type:
+        hit["primary-type"] = primary_type
+    return hit
+
+
+class StubClient:
+    """Answers per artist clause, recording what the matcher asked for."""
+
+    def __init__(self, responses: dict[str, list[ReleaseGroup]]) -> None:
+        self.responses: dict[str, list[ReleaseGroup]] = responses
+        self.queries: list[tuple[str, str]] = []
+
+    def search_release_groups(
+        self, title: str, artist: str = "", *, limit: int = 5
+    ) -> list[ReleaseGroup]:
+        self.queries.append((title, artist))
+        return self.responses.get(artist, [])[:limit]
+
+
+def test_match_release_group_accepts_an_exact_title() -> None:
+    hits = [_hit("Kind of Blue", "1959-08-17")]
+    assert match_release_group(hits, "Kind of Blue", 1959) is hits[0]
+
+
+def test_match_release_group_rejects_a_near_miss() -> None:
+    hits = [_hit("Kind of Blue / Blue Train", "1959")]
+    assert match_release_group(hits, "Kind of Blue", 1959) is None
+
+
+def test_match_release_group_unescapes_entities_on_both_sides() -> None:
+    hits = [_hit("“Heroes”", "1977-10-14")]  # MusicBrainz uses curly quotes
+    assert match_release_group(hits, "&#34;Heroes&#34;", 1977) is hits[0]
+
+
+def test_match_release_group_prefers_an_album_over_a_same_year_single() -> None:
+    single = _hit("Grace", "1994", primary_type="Single")
+    album = _hit("Grace", "1994-08-15")
+    assert match_release_group([single, album], "Grace", 1994) is album
+
+
+def test_match_release_group_uses_the_year_as_a_tie_break() -> None:
+    early = _hit("Kind of Blue", "1959")
+    later = _hit("Kind of Blue", "1997")
+    assert match_release_group([later, early], "Kind of Blue", 1958) is early
+
+
+def test_match_release_group_reports_a_surviving_tie() -> None:
+    first = _hit("Grace", "1994-08-15")
+    second = _hit("Grace", "1994-11-01")
+    assert match_release_group([first, second], "Grace", 1994) is None
+
+
+def test_match_release_group_ignores_undated_candidates_when_a_year_is_known() -> None:
+    undated = _hit("Grace")
+    dated = _hit("Grace", "1994")
+    assert match_release_group([undated, dated], "Grace", 1994) is dated
+
+
+def test_match_release_group_reports_a_miss_when_nothing_is_dated() -> None:
+    assert match_release_group([_hit("Grace")], "Grace", 1994) is None
+
+
+def test_match_release_group_requires_uniqueness_without_a_year() -> None:
+    hits = [_hit("Grace", "1994"), _hit("Grace", "2004")]
+    assert match_release_group(hits, "Grace", None) is None
+    assert match_release_group(hits[:1], "Grace", None) is hits[0]
+
+
+def test_match_release_group_rejects_a_symbol_only_title() -> None:
+    assert match_release_group([_hit("!!!")], "!!!", 2001) is None
+
+
+def test_artist_queries_try_the_full_credit_before_splitting() -> None:
+    assert artist_queries("Boldy James & Sterling Toles") == [
+        "Boldy James & Sterling Toles",
+        "Boldy James",
+        "Sterling Toles",
+    ]
+
+
+def test_artist_queries_unescape_a_rym_credit() -> None:
+    assert artist_queries("Boldy James &amp; Sterling Toles") == [
+        "Boldy James & Sterling Toles",
+        "Boldy James",
+        "Sterling Toles",
+    ]
+
+
+def test_artist_queries_keep_a_band_name_intact_first() -> None:
+    assert artist_queries("Black Country, New Road") == [
+        "Black Country, New Road",
+        "Black Country",
+        "New Road",
+    ]
+
+
+def test_artist_queries_split_a_featuring_credit() -> None:
+    assert artist_queries("Stan Getz & João Gilberto featuring Antônio Carlos Jobim") == [
+        "Stan Getz & João Gilberto featuring Antônio Carlos Jobim",
+        "Stan Getz",
+        "João Gilberto",
+        "Antônio Carlos Jobim",
+    ]
+
+
+def test_find_release_group_stops_at_the_first_match() -> None:
+    album = _hit("Grace", "1994")
+    client = StubClient({"Jeff Buckley": [album]})
+    assert find_release_group(client, "Grace", "Jeff Buckley", 1994) is album
+    assert client.queries == [("Grace", "Jeff Buckley")]
+
+
+def test_find_release_group_falls_back_to_the_lead_artist() -> None:
+    album = _hit("Manger on McNichols", "2020")
+    client = StubClient({"Boldy James": [album]})
+    found = find_release_group(
+        client, "Manger on McNichols", "Boldy James &amp; Sterling Toles", 2020
+    )
+    assert found is album
+    assert client.queries == [
+        ("Manger on McNichols", "Boldy James & Sterling Toles"),
+        ("Manger on McNichols", "Boldy James"),
+    ]
+
+
+def test_find_release_group_reports_a_miss() -> None:
+    assert find_release_group(StubClient({}), "Grace", "Nobody", 1994) is None
+
+
+def test_match_release_group_picks_the_album_from_a_recorded_search() -> None:
+    payload = _fixture("release-group-search-grace.json")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    with _client(handler) as client:
+        hits = client.search_release_groups("Grace", "Jeff Buckley")
+
+    match = match_release_group(hits, "Grace", 1994)
+    assert match is not None
+    assert match.get("primary-type") == "Album"
+    assert match.get("first-release-date") == "1994-08-15"
+
+
+def test_match_release_group_unescapes_a_recorded_search() -> None:
+    payload = _fixture("release-group-search-heroes.json")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    with _client(handler) as client:
+        hits = client.search_release_groups("Heroes", "David Bowie")
+
+    match = match_release_group(hits, "&#34;Heroes&#34;", 1977)
+    assert match is not None
+    assert match.get("primary-type") == "Album"
+    assert match.get("first-release-date") == "1977-10-14"
+
+
+def test_find_release_group_unescapes_the_title_before_searching() -> None:
+    payload = _fixture("release-group-search-heroes.json")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # The stored title is "&#34;Heroes&#34;"; the query must not carry it.
+        assert request.url.params["query"] == 'releasegroup:"\\"Heroes\\"" AND artist:"David Bowie"'
+        return httpx.Response(200, json=payload)
+
+    with _client(handler) as client:
+        group = find_release_group(client, "&#34;Heroes&#34;", "David Bowie", 1977)
+
+    assert group is not None
+    assert group.get("primary-type") == "Album"
+    assert group.get("first-release-date") == "1977-10-14"

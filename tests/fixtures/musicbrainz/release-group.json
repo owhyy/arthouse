@@ -1,0 +1,84 @@
+{
+  "id": "8e8a594f-2175-38c7-a871-abb68ec363e7",
+  "primary-type": "Album",
+  "tags": [
+    {
+      "count": 7,
+      "name": "cool jazz"
+    },
+    {
+      "count": 1,
+      "name": "discogs/the most popular album released every year from 1950 to 2020"
+    },
+    {
+      "count": 3,
+      "name": "hard bop"
+    },
+    {
+      "count": 28,
+      "name": "jazz"
+    },
+    {
+      "name": "jazz instrument",
+      "count": 2
+    },
+    {
+      "count": 2,
+      "name": "modal"
+    },
+    {
+      "count": 4,
+      "name": "modal jazz"
+    },
+    {
+      "name": "modal music",
+      "count": 2
+    },
+    {
+      "count": 2,
+      "name": "post-bop"
+    },
+    {
+      "count": 2,
+      "name": "trumpet jazz"
+    }
+  ],
+  "title": "Kind of Blue",
+  "secondary-type-ids": [],
+  "first-release-date": "1959-08-17",
+  "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+  "genres": [
+    {
+      "id": "5fc86669-d9ba-4716-8090-eff39081090e",
+      "count": 7,
+      "name": "cool jazz",
+      "disambiguation": ""
+    },
+    {
+      "count": 3,
+      "id": "8c083468-2dce-4a31-ae77-433af3deafd3",
+      "disambiguation": "",
+      "name": "hard bop"
+    },
+    {
+      "name": "jazz",
+      "disambiguation": "",
+      "count": 28,
+      "id": "a715278f-1580-409f-8078-4ffbc800e08b"
+    },
+    {
+      "disambiguation": "",
+      "name": "modal jazz",
+      "count": 4,
+      "id": "ff60b411-27db-4bd3-a444-3afe92cbfa7e"
+    },
+    {
+      "disambiguation": "",
+      "name": "post-bop",
+      "count": 2,
+      "id": "94ce0ba0-9043-4b5b-87d6-3c1a8458f75d"
+    }
+  ],
+  "disambiguation": "",
+  "secondary-types": []
+}

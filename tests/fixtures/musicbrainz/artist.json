@@ -1,0 +1,173 @@
+{
+  "sort-name": "Davis, Miles",
+  "area": {
+    "sort-name": "United States",
+    "iso-3166-1-codes": [
+      "US"
+    ],
+    "id": "489ce91b-6658-3307-9877-795b68554c98",
+    "type": null,
+    "disambiguation": "",
+    "name": "United States",
+    "type-id": null
+  },
+  "end-area": {
+    "disambiguation": "",
+    "name": "Santa Monica",
+    "type-id": null,
+    "id": "dbacf2e3-7e3e-4cee-8804-999b109285fa",
+    "sort-name": "Santa Monica",
+    "type": null
+  },
+  "isnis": [
+    "000000012144707X"
+  ],
+  "type": "Person",
+  "country": "US",
+  "gender-id": "36d3d30a-839d-3eda-8cb3-29be4384e4a9",
+  "tags": [
+    {
+      "count": 3,
+      "name": "bebop"
+    },
+    {
+      "count": 1,
+      "name": "blues"
+    },
+    {
+      "count": 1,
+      "name": "classical"
+    },
+    {
+      "name": "cool jazz",
+      "count": 10
+    },
+    {
+      "count": 1,
+      "name": "funk"
+    },
+    {
+      "name": "hard bop",
+      "count": 7
+    },
+    {
+      "name": "jazz",
+      "count": 27
+    },
+    {
+      "count": 13,
+      "name": "jazz fusion"
+    },
+    {
+      "count": 1,
+      "name": "jazz-funk"
+    },
+    {
+      "name": "modal jazz",
+      "count": 11
+    },
+    {
+      "count": 4,
+      "name": "post-bop"
+    },
+    {
+      "count": 1,
+      "name": "rock"
+    }
+  ],
+  "name": "Miles Davis",
+  "gender": "Male",
+  "life-span": {
+    "end": "1991-09-28",
+    "begin": "1926-05-26",
+    "ended": true
+  },
+  "genres": [
+    {
+      "disambiguation": "",
+      "name": "bebop",
+      "count": 3,
+      "id": "ac30756b-55a7-4dc3-8908-8f94c93318d0"
+    },
+    {
+      "name": "blues",
+      "disambiguation": "",
+      "id": "fe12b346-a10e-450f-bf81-fa20894b5ea2",
+      "count": 1
+    },
+    {
+      "id": "6ed4e4d1-9a97-4e2c-b8df-083754f154f4",
+      "count": 1,
+      "name": "classical",
+      "disambiguation": ""
+    },
+    {
+      "count": 10,
+      "id": "5fc86669-d9ba-4716-8090-eff39081090e",
+      "disambiguation": "",
+      "name": "cool jazz"
+    },
+    {
+      "count": 1,
+      "id": "fe4ba6a1-9873-4fd0-a12b-a70c81818514",
+      "disambiguation": "",
+      "name": "funk"
+    },
+    {
+      "count": 7,
+      "id": "8c083468-2dce-4a31-ae77-433af3deafd3",
+      "disambiguation": "",
+      "name": "hard bop"
+    },
+    {
+      "name": "jazz",
+      "disambiguation": "",
+      "id": "a715278f-1580-409f-8078-4ffbc800e08b",
+      "count": 27
+    },
+    {
+      "count": 13,
+      "id": "2377ff19-83e7-4873-b425-dce6d1ad4ef4",
+      "disambiguation": "",
+      "name": "jazz fusion"
+    },
+    {
+      "disambiguation": "",
+      "name": "jazz-funk",
+      "count": 1,
+      "id": "f3c43ae8-839a-4523-b295-cfa4eba6c911"
+    },
+    {
+      "count": 11,
+      "id": "ff60b411-27db-4bd3-a444-3afe92cbfa7e",
+      "disambiguation": "",
+      "name": "modal jazz"
+    },
+    {
+      "id": "94ce0ba0-9043-4b5b-87d6-3c1a8458f75d",
+      "count": 4,
+      "name": "post-bop",
+      "disambiguation": ""
+    },
+    {
+      "name": "rock",
+      "disambiguation": "",
+      "id": "0e3fc579-2d24-4f20-9dae-736e1ec78798",
+      "count": 1
+    }
+  ],
+  "id": "561d854a-6a28-4aa7-8c99-323e6ce46c2a",
+  "ipis": [
+    "00007619785"
+  ],
+  "begin-area": {
+    "sort-name": "Alton",
+    "id": "39e1719e-2604-4b59-b698-dab7caf85b33",
+    "type": null,
+    "name": "Alton",
+    "disambiguation": "",
+    "type-id": null
+  },
+  "disambiguation": "jazz trumpeter, bandleader, songwriter",
+  "type-id": "b6e035f4-3ce9-331c-97df-83397230b0df"
+}

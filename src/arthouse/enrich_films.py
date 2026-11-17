@@ -13,11 +13,18 @@ from types import TracebackType
 from typing import NotRequired, Protocol, TypedDict, cast
 
 import httpx
-from sqlalchemy import Engine, create_engine, func, select
+from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
-from arthouse.library import Item, ItemGenre, ItemMeta, ItemTag, normalize_title
+from arthouse.library import (
+    Item,
+    ItemGenre,
+    ItemMeta,
+    ItemTag,
+    create_db_engine,
+    normalize_title,
+)
 from arthouse.logs import configure_logging
 from arthouse.tagging import rebuild_descriptors
 
@@ -368,7 +375,7 @@ def main() -> None:
     args = parser.parse_args()
 
     settings = get_settings()
-    engine = create_engine(f"sqlite:///{settings.data_dir / 'library.db'}")
+    engine = create_db_engine(settings.data_dir / "library.db")
     if cast(bool, args.report):
         report = keyword_report(engine)
         print(

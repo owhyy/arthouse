@@ -15,11 +15,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
-from sqlalchemy import Engine, and_, create_engine, select
+from sqlalchemy import Engine, and_, select
 from sqlalchemy.orm import Session
 
 from arthouse.config import BASE_DIR, get_settings
-from arthouse.library import Item, ItemMeta, normalize_title
+from arthouse.library import Item, ItemMeta, create_db_engine, normalize_title
 from arthouse.logs import configure_logging
 
 DEFAULT_RATINGS = BASE_DIR / "datasets" / "ratings_small.csv"
@@ -234,7 +234,7 @@ def main() -> None:
     args = parser.parse_args()
 
     settings = get_settings()
-    engine = create_engine(f"sqlite:///{settings.data_dir / 'library.db'}")
+    engine = create_db_engine(settings.data_dir / "library.db")
     matrix = load_collab(engine, cast(Path, args.ratings), cast(Path, args.links))
     print(
         f"collab: {matrix.users} users, {matrix.ratings} ratings, "

@@ -8,6 +8,8 @@ from arthouse.library import (
     MEDIA_ORDER,
     GenreRow,
     ItemMeta,
+    count_items,
+    count_items_by_media,
     query_descriptor_options,
     query_item,
     query_item_credits,
@@ -74,17 +76,24 @@ async def library(
     requested = descriptor.strip()
     hit = lookup(requested) if requested else None
     selected = hit.name if hit is not None else requested
-    all_items = query_items(db)
-    counts = {media: sum(1 for i in all_items if i.media_type == media) for media in MEDIA_ORDER}
-    matches = query_items(
+    per_media = count_items_by_media(db)
+    counts = {media: per_media.get(media, 0) for media in MEDIA_ORDER}
+    total_matches = count_items(
         db,
         media_type=tab,
         search=search or None,
         descriptor=selected or None,
     )
-    page_count = max(1, (len(matches) + PAGE_SIZE - 1) // PAGE_SIZE)
+    page_count = max(1, (total_matches + PAGE_SIZE - 1) // PAGE_SIZE)
     page = min(max(page, 1), page_count)
-    items = matches[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
+    items = query_items(
+        db,
+        media_type=tab,
+        search=search or None,
+        descriptor=selected or None,
+        limit=PAGE_SIZE,
+        offset=(page - 1) * PAGE_SIZE,
+    )
     filtered = bool(search or selected)
     tabs = [
         {
@@ -92,7 +101,7 @@ async def library(
             "label": MEDIA_LABELS[media],
             # While filtering, the active tab shows the number of matches;
             # the other tabs keep their library totals.
-            "count": len(matches) if filtered and media == tab else counts[media],
+            "count": total_matches if filtered and media == tab else counts[media],
             "active": media == tab,
         }
         for media in MEDIA_ORDER
@@ -113,8 +122,8 @@ async def library(
             "page": page,
             "page_count": page_count,
             "items": items,
-            "item_credits": query_item_credits(db),
-            "item_genres": query_item_genres(db, tab),
-            "total": len(all_items),
+            "item_credits": query_item_credits(db, tab),
+            "item_genres": query_item_genres(db, tab, [item.source_id for item in items]),
+            "total": sum(counts.values()),
         },
     )

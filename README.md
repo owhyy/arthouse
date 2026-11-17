@@ -55,7 +55,10 @@ At startup the app parses all CSVs it finds and (re)builds `data/library.db`
 (SQLite via SQLAlchemy). Ratings are normalized to a 0–5 scale internally
 (RYM 1–10 ÷ 2), displayed as 0–10 scores; unrated items (RYM rating 0 /
 wantlist, Goodreads unrated or to-read) are skipped. Re-export and restart to
-refresh.
+refresh. The SQLite engine runs in WAL mode (`synchronous=NORMAL`, 5 s busy
+timeout) so an enrichment pass can write while the app serves reads, and the
+grid is paginated in SQL with indexes on the media/rating order and the
+`(source, source_id)` identity.
 
 ### Film enrichment (TMDB)
 

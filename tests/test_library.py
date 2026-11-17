@@ -1,6 +1,7 @@
 import re
 from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 import httpx
 import pytest
@@ -16,8 +17,13 @@ from arthouse.library import (
     ItemMeta,
     ItemTag,
     build_db,
+    count_items,
+    count_items_by_media,
+    create_db_engine,
     normalize_title,
     query_item,
+    query_item_credits,
+    query_item_genres,
     query_items,
     split_genres,
 )
@@ -113,6 +119,49 @@ def test_query_filters_by_media_type(library_db: Engine) -> None:
     with Session(library_db) as db:
         assert len(query_items(db, media_type="film")) == 2
         assert len(query_items(db, media_type="book")) == 1
+
+
+def test_query_items_paginates_with_limit_and_offset(library_db: Engine) -> None:
+    with Session(library_db) as db:
+        all_albums = query_items(db, media_type="music")
+        first = query_items(db, media_type="music", limit=1)
+        second = query_items(db, media_type="music", limit=1, offset=1)
+        assert count_items(db, media_type="music") == len(all_albums) == 2
+    assert [album.id for album in first] == [all_albums[0].id]
+    assert [album.id for album in second] == [all_albums[1].id]
+
+
+def test_count_items_matches_the_filters(library_db: Engine) -> None:
+    _enrich_film(library_db, "https://boxd.it/aaa", "A.", ["Drama"], keywords=["neo-noir"])
+    with Session(library_db) as db:
+        assert count_items(db, media_type="film") == 2
+        assert count_items(db, media_type="film", search="film a") == 1
+        assert count_items(db, media_type="film", descriptor="dark") == 1
+        assert count_items(db, media_type="film", search="film a", descriptor="dark") == 1
+        assert count_items(db, media_type="film", descriptor="unknown") == 0
+
+
+def test_count_items_by_media_groups_the_tab_totals(library_db: Engine) -> None:
+    with Session(library_db) as db:
+        assert count_items_by_media(db) == {"music": 2, "film": 2, "book": 1}
+
+
+def test_query_item_credits_are_scoped_to_the_medium(library_db: Engine) -> None:
+    _enrich_film(library_db, "https://boxd.it/aaa", "A.", ["Drama"])
+    with Session(library_db) as db:
+        assert query_item_credits(db, "film") == {
+            "https://boxd.it/aaa": "Fixture Director",
+        }
+        assert query_item_credits(db, "music") == {}
+
+
+def test_query_item_genres_can_be_scoped_to_visible_ids(library_db: Engine) -> None:
+    _add_music_genres(library_db, [("rock", 17)])
+    with Session(library_db) as db:
+        assert query_item_genres(db, "music") == {"1": [GenreRow("rock", 17)]}
+        assert query_item_genres(db, "music", ["1"]) == {"1": [GenreRow("rock", 17)]}
+        assert query_item_genres(db, "music", []) == {}
+        assert query_item_genres(db, "music", ["missing"]) == {}
 
 
 def test_scores_normalize_to_10_point_scale(library_db: Engine) -> None:
@@ -554,6 +603,44 @@ def test_genres_never_feed_the_vocabulary(library_db: Engine) -> None:
 def test_build_db_tolerates_missing_data_dir(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'library.db'}")
     assert build_db(engine, tmp_path / "nope") == 0
+
+
+def test_library_tables_have_the_scale_indexes(library_db: Engine) -> None:
+    inspector = inspect(library_db)
+    assert {"ix_items_identity", "ix_items_media_rating_title"} <= {
+        index["name"] for index in inspector.get_indexes("items")
+    }
+    assert "ix_item_meta_provider" in {
+        index["name"] for index in inspector.get_indexes("item_meta")
+    }
+    assert "ix_item_descriptor_name" in {
+        index["name"] for index in inspector.get_indexes("item_descriptor")
+    }
+
+
+def test_build_db_adds_indexes_missing_from_an_existing_table(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'library.db'}")
+    Base.metadata.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(text("DROP INDEX ix_item_meta_provider"))
+    assert "ix_item_meta_provider" not in {
+        index["name"] for index in inspect(engine).get_indexes("item_meta")
+    }
+    build_db(engine, tmp_path / "nope")
+    assert "ix_item_meta_provider" in {
+        index["name"] for index in inspect(engine).get_indexes("item_meta")
+    }
+
+
+def test_db_engine_enables_wal_and_waits_instead_of_failing(tmp_path: Path) -> None:
+    engine = create_db_engine(tmp_path / "library.db")
+    with engine.connect() as conn:
+        assert cast(str, conn.exec_driver_sql("PRAGMA journal_mode").scalar_one()) == "wal"
+        # NORMAL is 1; WAL does not need the default FULL fsync on every commit.
+        assert cast(int, conn.exec_driver_sql("PRAGMA synchronous").scalar_one()) == 1
+        assert cast(int, conn.exec_driver_sql("PRAGMA busy_timeout").scalar_one()) == 5000
+        assert cast(int, conn.exec_driver_sql("PRAGMA cache_size").scalar_one()) == -16000
+    engine.dispose()
 
 
 async def test_library_page_shows_default_music_tab(

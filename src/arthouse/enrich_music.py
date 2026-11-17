@@ -16,11 +16,21 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import cast
 
-from sqlalchemy import Engine, create_engine, select
+from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
-from arthouse.library import Base, GenreRow, Item, ItemGenre, ItemMeta, ItemMiss, ItemTag
+from arthouse.library import (
+    Base,
+    GenreRow,
+    Item,
+    ItemGenre,
+    ItemMeta,
+    ItemMiss,
+    ItemTag,
+    create_db_engine,
+    ensure_indexes,
+)
 from arthouse.logs import configure_logging
 from arthouse.musicbrainz import (
     Artist,
@@ -280,9 +290,10 @@ def main() -> None:
 
     configure_logging()
     settings = get_settings()
-    engine = create_engine(f"sqlite:///{settings.data_dir / 'library.db'}")
+    engine = create_db_engine(settings.data_dir / "library.db")
     # The app creates the schema at startup, but the CLI may run first.
     Base.metadata.create_all(engine)
+    ensure_indexes(engine)
     with MusicBrainzClient(settings.musicbrainz_user_agent) as client:
         stats = enrich_music(engine, client, limit=cast(int | None, args.limit))
     rebuild_descriptors(engine)  # keep the derived vocabulary in sync

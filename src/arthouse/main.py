@@ -6,12 +6,11 @@ from functools import partial
 
 from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine
 
 from arthouse.assets import asset_url, build_asset_map
 from arthouse.config import BASE_DIR, Settings, get_settings
 from arthouse.deps import templates
-from arthouse.library import build_db
+from arthouse.library import build_db, create_db_engine
 from arthouse.logs import configure_logging
 from arthouse.routes import pages
 from arthouse.tagging import rebuild_descriptors
@@ -22,7 +21,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     data_dir = settings.data_dir
     data_dir.mkdir(parents=True, exist_ok=True)
     # echo=debug prints every SQL statement to stderr (the server terminal).
-    engine = create_engine(f"sqlite:///{data_dir / 'library.db'}", echo=settings.debug)
+    engine = create_db_engine(data_dir / "library.db", echo=settings.debug)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:

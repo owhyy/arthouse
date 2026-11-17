@@ -13,11 +13,11 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import cast
 
-from sqlalchemy import Engine, and_, create_engine, select, text
+from sqlalchemy import Engine, and_, select, text
 from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
-from arthouse.library import Base, Item, ItemDescriptor, ItemTag
+from arthouse.library import Base, Item, ItemDescriptor, ItemTag, create_db_engine
 from arthouse.logs import configure_logging
 from arthouse.vocab import FACETS, Facet, lookup
 
@@ -131,7 +131,7 @@ def main() -> None:
     limit = cast(int, args.unmapped)
 
     settings = get_settings()
-    engine = create_engine(f"sqlite:///{settings.data_dir / 'library.db'}")
+    engine = create_db_engine(settings.data_dir / "library.db")
     stats = rebuild_descriptors(engine)
 
     share = 100 * stats.mapped / stats.tags if stats.tags else 0.0

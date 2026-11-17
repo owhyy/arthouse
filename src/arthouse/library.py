@@ -14,8 +14,21 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from sqlalchemy import Engine, and_, func, inspect, select, text
+from sqlalchemy import (
+    Engine,
+    Index,
+    Select,
+    and_,
+    create_engine,
+    event,
+    func,
+    inspect,
+    select,
+    text,
+)
+from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy.pool import ConnectionPoolEntry
 
 from arthouse.vocab import FACETS, Facet, facet_of
 
@@ -89,6 +102,16 @@ class Item(Base):
 
     __tablename__: str = "items"
 
+    __table_args__: tuple[Index, ...] = (
+        Index("ix_items_identity", "source", "source_id"),
+        Index(
+            "ix_items_media_rating_title",
+            "media_type",
+            text("rating DESC"),
+            text("title COLLATE NOCASE"),
+        ),
+    )
+
     id: Mapped[int] = mapped_column(primary_key=True)
     media_type: Mapped[str]  # music | film | book
     source: Mapped[str]  # letterboxd | rateyourmusic | goodreads
@@ -110,6 +133,7 @@ class ItemMeta(Base):
     """Provider enrichment for one item; keyed by platform id so it survives rebuilds."""
 
     __tablename__: str = "item_meta"
+    __table_args__: tuple[Index, ...] = (Index("ix_item_meta_provider", "provider"),)
 
     source: Mapped[str] = mapped_column(primary_key=True)
     source_id: Mapped[str] = mapped_column(primary_key=True)
@@ -194,6 +218,7 @@ class ItemDescriptor(Base):
     """
 
     __tablename__: str = "item_descriptor"
+    __table_args__: tuple[Index, ...] = (Index("ix_item_descriptor_name", "name"),)
 
     source: Mapped[str] = mapped_column(primary_key=True)
     source_id: Mapped[str] = mapped_column(primary_key=True)
@@ -335,6 +360,43 @@ def drop_legacy_enrichment(engine: Engine) -> None:
                 conn.execute(text(f"DELETE FROM {table}"))
 
 
+def create_db_engine(database: Path, *, echo: bool = False) -> Engine:
+    """SQLite engine tuned for one writer and concurrent readers.
+
+    WAL lets the enrichment passes write while the app keeps serving reads,
+    `busy_timeout` waits for a blocked writer instead of failing immediately,
+    and the larger cache keeps the derived tables in memory. `synchronous=NORMAL`
+    is the recommended pairing with WAL for a local app: safe against process
+    crashes, though a power loss can cost the last transaction.
+    """
+    engine = create_engine(f"sqlite:///{database}", echo=echo)
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(
+        dbapi_connection: DBAPIConnection, _connection_record: ConnectionPoolEntry
+    ) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA cache_size=-16000")
+        cursor.close()
+
+    return engine
+
+
+def ensure_indexes(engine: Engine) -> None:
+    """Create missing indexes on tables `create_all` left untouched.
+
+    `create_all` skips a table that already exists together with its indexes,
+    so a DB created before an index was added would never get it. Index DDL is
+    additive and idempotent, so completing it here needs no data rebuild.
+    """
+    for table in Base.metadata.sorted_tables:
+        for index in table.indexes:
+            index.create(engine, checkfirst=True)
+
+
 def build_db(engine: Engine, data_dir: Path) -> int:
     """(Re)build the schema and items from data_dir exports; returns item count.
 
@@ -364,6 +426,7 @@ def build_db(engine: Engine, data_dir: Path) -> int:
     # (item_meta, item_tag) persist across restarts.
     Base.metadata.tables["items"].drop(engine, checkfirst=True)
     Base.metadata.create_all(engine)
+    ensure_indexes(engine)
     drop_legacy_enrichment(engine)
     with Session(engine) as session:
         session.add_all(items)
@@ -371,13 +434,11 @@ def build_db(engine: Engine, data_dir: Path) -> int:
     return len(items)
 
 
-def query_items(
-    db: Session,
+def _items_query(
     media_type: str | None = None,
     search: str | None = None,
     descriptor: str | None = None,
-) -> list[Item]:
-    """Rated items, newest rating first; `search` matches the title only."""
+) -> Select[Item]:
     stmt = select(Item)
     if search:
         stmt = stmt.where(Item.title.ilike(f"%{search}%"))
@@ -389,10 +450,52 @@ def query_items(
                 ItemDescriptor.source_id == Item.source_id,
             ),
         ).where(ItemDescriptor.name == descriptor)
-    stmt = stmt.order_by(Item.rating.desc(), Item.title.collate("nocase"))
     if media_type is not None:
         stmt = stmt.where(Item.media_type == media_type)
+    return stmt
+
+
+def query_items(
+    db: Session,
+    media_type: str | None = None,
+    search: str | None = None,
+    descriptor: str | None = None,
+    *,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[Item]:
+    """Rated items, newest rating first; `search` matches the title only.
+
+    The grid passes `limit`/`offset` so SQLite sorts and slices the page;
+    `count_items` supplies the total the pager shows.
+    """
+    stmt = _items_query(media_type, search, descriptor).order_by(
+        Item.rating.desc(), Item.title.collate("nocase")
+    )
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
     return list(db.scalars(stmt))
+
+
+def count_items(
+    db: Session,
+    media_type: str | None = None,
+    search: str | None = None,
+    descriptor: str | None = None,
+) -> int:
+    """Number of items the grid would match, without loading the rows."""
+    count = db.scalar(
+        select(func.count()).select_from(_items_query(media_type, search, descriptor).subquery())
+    )
+    return count or 0
+
+
+def count_items_by_media(db: Session) -> dict[str, int]:
+    """Rated items per medium for the tab strip, in one aggregate query."""
+    rows = db.execute(select(Item.media_type, func.count()).group_by(Item.media_type)).all()
+    return {media: count for media, count in rows}
 
 
 @dataclass(frozen=True)
@@ -474,15 +577,33 @@ def query_item_meta(
     return meta, [GenreRow(name, count) for name, count in rows]
 
 
-def query_item_credits(db: Session) -> dict[str, str]:
-    """Provider credits (director, …) keyed by platform id — one query for the grid."""
-    return {meta.source_id: meta.credit for meta in db.scalars(select(ItemMeta)) if meta.credit}
-
-
-def query_item_genres(db: Session, media_type: str) -> dict[str, list[GenreRow]]:
-    """Display genres keyed by platform id, best-voted first — one query for the grid."""
-    genres: dict[str, list[GenreRow]] = {}
+def query_item_credits(db: Session, media_type: str) -> dict[str, str]:
+    """Provider credits (director, …) keyed by platform id for one grid tab."""
     rows = db.execute(
+        select(ItemMeta.source_id, ItemMeta.credit)
+        .join(
+            Item,
+            and_(Item.source == ItemMeta.source, Item.source_id == ItemMeta.source_id),
+        )
+        .where(Item.media_type == media_type)
+    ).all()
+    return {source_id: credit for source_id, credit in rows if credit}
+
+
+def query_item_genres(
+    db: Session,
+    media_type: str,
+    source_ids: Sequence[str] | None = None,
+) -> dict[str, list[GenreRow]]:
+    """Display genres keyed by platform id, best-voted first.
+
+    Passing the platform ids of the visible page keeps this query proportional
+    to the page instead of the whole medium. `None` loads every id for the CLIs
+    and reports that still need the full picture.
+    """
+    if source_ids is not None and not source_ids:
+        return {}
+    stmt = (
         select(ItemGenre.source_id, ItemGenre.genre, ItemGenre.count)
         .join(
             Item,
@@ -490,8 +611,11 @@ def query_item_genres(db: Session, media_type: str) -> dict[str, list[GenreRow]]
         )
         .where(Item.media_type == media_type)
         .order_by(ItemGenre.count.desc(), ItemGenre.genre)
-    ).all()
-    for source_id, genre, count in rows:
+    )
+    if source_ids is not None:
+        stmt = stmt.where(ItemGenre.source_id.in_(source_ids))
+    genres: dict[str, list[GenreRow]] = {}
+    for source_id, genre, count in db.execute(stmt).all():
         genres.setdefault(source_id, []).append(GenreRow(genre, count))
     return genres
 

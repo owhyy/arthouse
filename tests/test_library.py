@@ -1,3 +1,4 @@
+import csv
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -93,6 +94,60 @@ def test_rym_ratings_are_normalized(library_db: Engine) -> None:
     assert albums["Fixture Album"].rating == 4.0
     assert albums["Fixture Album"].rating_native == "8/10"
     assert albums["Fixture Album"].creator == "Fixture Artist"
+
+
+def test_rym_html_entities_are_decoded(tmp_path: Path) -> None:
+    """RYM escapes `&` and `"` in the name and title columns.
+
+    The parser decodes them, so search, sorting and the templates all see the
+    text a browser would show instead of a literal `&amp;`.
+    """
+    export = tmp_path / "rateyourmusic" / "export.csv"
+    export.parent.mkdir()
+    columns = (
+        "RYM Album",
+        "First Name",
+        "Last Name",
+        "First Name localized",
+        " Last Name localized",  # the stray space is in the real header too
+        "Title",
+        "Release_Date",
+        "Rating",
+        "Ownership",
+        "Purchase Date",
+        "Media Type",
+        " Review",
+        " Review Title",
+    )
+    rows = (
+        (
+            "1",
+            "Stan",
+            "Getz &amp; João Gilberto featuring Antônio Carlos Jobim",
+            "",
+            "",
+            "Getz / Gilberto",
+            "1964",
+            "10",
+            "n",
+            "",
+            "",
+            "",
+            "",
+        ),
+        ("2", "David", "Bowie", "", "", "&#34;Heroes&#34;", "1977", "7", "n", "", "", "", ""),
+    )
+    with open(export, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(columns)
+        writer.writerows(rows)
+    engine = create_engine(f"sqlite:///{tmp_path / 'library.db'}")
+    build_db(engine, tmp_path)
+    with Session(engine) as db:
+        albums = {item.title: item.creator for item in query_items(db, media_type="music")}
+    getz = albums["Getz / Gilberto"]
+    assert getz == "Stan Getz & João Gilberto featuring Antônio Carlos Jobim"
+    assert albums['"Heroes"'] == "David Bowie"
 
 
 def test_unrated_and_wishlist_items_are_skipped(library_db: Engine) -> None:

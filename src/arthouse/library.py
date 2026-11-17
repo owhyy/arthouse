@@ -98,8 +98,10 @@ def _parse_rym(path: Path) -> list[Item]:
         if rating in ("", "0"):
             continue
         # RYM rates 1-10; prefer the romanized artist name when present.
-        first = row["First Name localized"] or row["First Name"]
-        last = row["Last Name localized"] or row["Last Name"]
+        # RYM escapes HTML entities in the name and title columns (`&amp;`,
+        # `&#34;`), so they are decoded here; stored text is the text a page shows.
+        first = html.unescape(row["First Name localized"] or row["First Name"])
+        last = html.unescape(row["Last Name localized"] or row["Last Name"])
         creator = f"{first} {last}" if first and last else (last or first)
         release_year = row["Release_Date"].strip()[:4]
         items.append(
@@ -107,7 +109,7 @@ def _parse_rym(path: Path) -> list[Item]:
                 media_type="music",
                 source="rateyourmusic",
                 source_id=row["RYM Album"],
-                title=row["Title"],
+                title=html.unescape(row["Title"]),
                 creator=creator,
                 year=int(release_year) if release_year.isdigit() else None,
                 rating=int(rating) / 2,

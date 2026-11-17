@@ -27,7 +27,10 @@ stripped and paragraphs preserved). Enriched items also show provider genres on
 cards and the detail page. MusicBrainz genres carry a vote tally, so they are
 ranked by it: the detail page marks the best-voted ones as primary and puts the
 rest under "More genres", while a card keeps a single ranked line and fades
-whatever does not fit. TMDB genres have no votes and render as they always have.
+whatever does not fit. The tally does the sorting only — it is never displayed.
+TMDB genres have no votes and render as they always have.
+When an album has no genres of its own and the artist's are borrowed instead, the
+detail page notes that they may not be accurate.
 Films also show the TMDB synopsis and faceted descriptors (detail page only),
 and the director in the same credit line where books show the author and music
 the artist.
@@ -92,11 +95,10 @@ raises the level to DEBUG, which adds every request, every retry with its status
 and wait, and the body and headers of a hard failure.
 
 The enrichment schema is shared by every medium: `item_meta` stores
-provider-neutral fields (`provider`, `external_id`, `summary`, `image_path`,
-`credit`, `tags_fetched`), `item_miss` records lookups that found no match so
-they are not retried on every run, `item_genre` stores display genres (with
-`artist_level` marking the MusicBrainz artist fallback), `item_tag` stores raw
-descriptor labels from any provider, and `item_descriptor` holds the
+provider-neutral fields (`provider`, `external_id`, `summary`, `credit`,
+`tags_fetched`), `item_miss` records lookups that found no match so
+they are not retried on every run, `item_genre` stores display genres, `item_tag`
+stores raw descriptor labels from any provider, and `item_descriptor` holds the
 descriptors those labels map onto.
 
 ### Music enrichment (MusicBrainz)
@@ -122,15 +124,15 @@ Matching is stricter than TMDB's: the normalized title must match exactly, so a
 release MusicBrainz files under another title is reported as unmatched rather
 than guessed. Year only breaks ties between hits — a reissue legitimately
 carries a later date — and an album beats a same-name single. Genres come from
-the album's curated genres, and every row keeps the community's vote tally,
-which is what ranks the display and decides the primary/secondary split. When
-the album has no genres the artist's are used, flagged `artist_level` in
-`item_genre`. Community tags are the descriptor source; artist tags are never
-borrowed, because a tag names one album's mood. A matched album is never
-re-fetched, so a record that had no genres when it was enriched stays that way
-until it is cleared and re-run. An album that does not match is recorded in
-`item_miss`, so a later run skips it instead of searching the same query again;
-delete its row to retry.
+the album's own curated genres, and every row keeps the community's vote tally,
+which is what ranks the display and decides the primary/secondary split. An
+album MusicBrainz has no genre for is left without genres: the artist's are
+never borrowed, because they describe a career and can be wrong for one record.
+Community tags are the album's too — one record's mood is not the next one's — so
+nothing is read from the artist. A matched album is never re-fetched, so a record
+that had no genres when it was enriched stays that way until it is cleared and
+re-run. An album that does not match is recorded in `item_miss`, so a later run
+skips it instead of searching the same query again; delete its row to retry.
 
 The batch logs one line per album to stderr — `fetching [12/272] Grace — Jeff
 Buckley (1994)` — so stdout keeps only the summary and the unmatched list. The

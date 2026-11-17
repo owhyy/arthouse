@@ -58,7 +58,6 @@ def _movie(
         "release_date": release,
         "vote_count": votes,
         "overview": overview,
-        "poster_path": None,
         "genre_ids": genres,
     }
 
@@ -323,7 +322,6 @@ def test_directors_are_backfilled_for_older_rows(library_db: Engine) -> None:
                 provider="tmdb",
                 external_id="42",
                 summary="Old row.",
-                image_path=None,
                 matched_title="Fixture Film A",
                 matched_year=1999,
             )
@@ -349,7 +347,6 @@ def test_keywords_are_backfilled_for_older_rows(library_db: Engine) -> None:
                 provider="tmdb",
                 external_id="42",
                 summary="Old row.",
-                image_path=None,
                 matched_title="Fixture Film A",
                 matched_year=1999,
             )

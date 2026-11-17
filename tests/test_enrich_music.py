@@ -9,13 +9,12 @@ from arthouse.enrich_music import (
     MusicEnrichment,
     album_descriptors,
     album_genres,
-    artist_genres,
     enrich_music,
     enrich_music_item,
 )
 from arthouse.library import build_db
 from arthouse.models import GenreRow, Item, ItemGenre, ItemMeta, ItemMiss, ItemTag
-from arthouse.musicbrainz import Artist, Genre, ReleaseGroup, Tag
+from arthouse.musicbrainz import Genre, ReleaseGroup, Tag
 from arthouse.queries import query_item_genres, query_item_meta, query_items
 
 
@@ -26,13 +25,10 @@ class FakeMusicBrainz:
         self,
         hits: list[ReleaseGroup],
         groups: dict[str, ReleaseGroup] | None = None,
-        artists: dict[str, Artist] | None = None,
     ) -> None:
         self.hits: list[ReleaseGroup] = hits
         self.groups: dict[str, ReleaseGroup] = groups or {}
-        self.artists: dict[str, Artist] = artists or {}
         self.detail_calls: list[str] = []
-        self.artist_calls: list[str] = []
         self.search_calls: list[tuple[str, str]] = []
 
     def search_release_groups(
@@ -45,10 +41,6 @@ class FakeMusicBrainz:
     def release_group(self, mbid: str) -> ReleaseGroup:
         self.detail_calls.append(mbid)
         return self.groups[mbid]
-
-    def artist(self, mbid: str) -> Artist:
-        self.artist_calls.append(mbid)
-        return self.artists[mbid]
 
 
 def _genres(*pairs: tuple[str, int]) -> list[Genre]:
@@ -110,13 +102,6 @@ def test_album_mapping_keeps_genres_and_descriptors_separate() -> None:
     assert album_descriptors(group) == ["melancholy"]
 
 
-def test_artist_mapping_reads_genres_only() -> None:
-    artist: Artist = {
-        "genres": _genres(("art pop", 4), ("rejected genre", 0)),
-    }
-    assert artist_genres(artist) == [GenreRow("art pop", 4)]
-
-
 def test_matched_album_writes_meta_and_album_rows(library_db: Engine) -> None:
     hit = _hit("mbid-1", "Fixture Album", "2018-04-01")
     group = _group(
@@ -137,31 +122,29 @@ def test_matched_album_writes_meta_and_album_rows(library_db: Engine) -> None:
         matched_year=2018,
         album_genres=1,
         album_descriptors=1,
-        artist_genres=0,
-        artist_fallback=False,
     )
     assert client.detail_calls == ["mbid-1"]
-    assert client.artist_calls == []
     with Session(library_db) as db:
         meta = db.get(ItemMeta, ("rateyourmusic", "1"))
-        genres = {(row.genre, row.count, row.artist_level) for row in db.scalars(select(ItemGenre))}
+        genres = {(row.genre, row.count) for row in db.scalars(select(ItemGenre))}
         tags = {row.tag for row in db.scalars(select(ItemTag))}
+        found = query_item_meta(db, "rateyourmusic", "1")
+    assert found is not None
+    assert found[1] == [GenreRow("art pop", 3)]
     assert meta is not None
     assert meta.provider == "musicbrainz"
     assert meta.external_id == "mbid-1"
     assert meta.summary == ""
-    assert meta.image_path is None
     assert meta.credit == "Fixture Artist"
     assert meta.tags_fetched
     assert meta.matched_title == "Fixture Album"
     assert meta.matched_year == 2018
-    assert genres == {("art pop", 3, False)}
+    assert genres == {("art pop", 3)}
     assert tags == {"melancholy"}
 
 
-def test_artist_genre_fallback_fires_when_the_album_has_no_genres(
-    library_db: Engine,
-) -> None:
+def test_album_without_genres_stays_empty(library_db: Engine) -> None:
+    """No album genres means no genres: the artist's are never borrowed."""
     hit = _hit("mbid-2", "Fixture Album", "2018-04-01", artist_id="artist-9")
     group = _group(
         "mbid-2",
@@ -170,33 +153,24 @@ def test_artist_genre_fallback_fires_when_the_album_has_no_genres(
         genres=_genres(("unvoted", 0)),
         tags=_tags(("melancholy", 5)),
     )
-    artist: Artist = {
-        "name": "Fixture Artist",
-        "genres": _genres(("art pop", 4), ("dream pop", 1)),
-    }
-    client = FakeMusicBrainz([hit], {"mbid-2": group}, {"artist-9": artist})
+    client = FakeMusicBrainz([hit], {"mbid-2": group})
 
     with Session(library_db) as db:
         result = enrich_music_item(db, client, _music_item(db))
 
     assert result is not None
-    assert result.artist_fallback
     assert result.album_genres == 0
     assert result.album_descriptors == 1
-    assert result.artist_genres == 2
-    assert client.artist_calls == ["artist-9"]
+    # Only the release-group lookup was made: no artist request, no fallback.
+    assert client.detail_calls == ["mbid-2"]
     with Session(library_db) as db:
-        genres = {(row.genre, row.count, row.artist_level) for row in db.scalars(select(ItemGenre))}
-        tags = {row.tag for row in db.scalars(select(ItemTag))}
+        assert list(db.scalars(select(ItemGenre))) == []
+        assert {row.tag for row in db.scalars(select(ItemTag))} == {"melancholy"}
         found = query_item_meta(db, "rateyourmusic", "1")
         grid = query_item_genres(db, "music")
     assert found is not None
-    meta, display_genres = found
-    assert meta is not None
-    assert genres == {("art pop", 4, True), ("dream pop", 1, True)}
-    assert tags == {"melancholy"}
-    assert display_genres == [GenreRow("art pop", 4), GenreRow("dream pop", 1)]
-    assert grid == {"1": [GenreRow("art pop", 4), GenreRow("dream pop", 1)]}
+    assert found[1] == []
+    assert grid == {}
 
 
 def test_album_without_tags_does_not_borrow_artist_tags(library_db: Engine) -> None:
@@ -209,19 +183,16 @@ def test_album_without_tags_does_not_borrow_artist_tags(library_db: Engine) -> N
         result = enrich_music_item(db, client, _music_item(db))
 
     assert result is not None
-    assert not result.artist_fallback
     assert result.album_genres == 1
     assert result.album_descriptors == 0
-    assert result.artist_genres == 0
-    assert client.artist_calls == []
     with Session(library_db) as db:
-        genres = {(row.genre, row.count, row.artist_level) for row in db.scalars(select(ItemGenre))}
+        genres = {(row.genre, row.count) for row in db.scalars(select(ItemGenre))}
         tags = list(db.scalars(select(ItemTag)))
-    assert genres == {("art pop", 3, False)}
+    assert genres == {("art pop", 3)}
     assert tags == []
 
 
-def test_artist_fallback_is_skipped_without_a_credit(library_db: Engine) -> None:
+def test_album_with_nothing_on_musicbrainz_writes_no_rows(library_db: Engine) -> None:
     hit: ReleaseGroup = {
         "id": "mbid-3",
         "title": "Fixture Album",
@@ -235,11 +206,8 @@ def test_artist_fallback_is_skipped_without_a_credit(library_db: Engine) -> None
         result = enrich_music_item(db, client, _music_item(db))
 
     assert result is not None
-    assert result.artist_fallback
     assert result.album_genres == 0
     assert result.album_descriptors == 0
-    assert result.artist_genres == 0
-    assert client.artist_calls == []
     with Session(library_db) as db:
         meta = db.get(ItemMeta, ("rateyourmusic", "1"))
         genres = list(db.scalars(select(ItemGenre)))
@@ -295,7 +263,6 @@ def test_batch_enriches_pending_albums_in_rating_order(library_db: Engine) -> No
     assert stats.matched == 2
     assert stats.already_enriched == 0
     assert stats.not_matched == 0
-    assert stats.fallback == 0
     assert stats.genres == 3
     assert stats.descriptors == 2
     assert stats.unmatched == []
@@ -314,7 +281,6 @@ def _existing_meta(source_id: str, external_id: str) -> ItemMeta:
         provider="musicbrainz",
         external_id=external_id,
         summary="",
-        image_path=None,
         credit="Fixture Artist Two",
         tags_fetched=True,
         matched_title="Fixture Best Album",
@@ -367,23 +333,27 @@ def test_batch_reports_every_unmatched_album(library_db: Engine) -> None:
         assert list(db.scalars(select(ItemMeta))) == []
 
 
-def test_batch_counts_artist_fallback(library_db: Engine) -> None:
+def test_batch_counts_only_album_genres(library_db: Engine) -> None:
     client = FakeMusicBrainz(
         [_hit("mbid-1", "Fixture Album", "2018-04-01")],
-        {"mbid-1": _group("mbid-1", "Fixture Album", "2018-04-01")},
-        {"artist-1": {"genres": _genres(("art pop", 2), ("dream pop", 1))}},
+        {
+            "mbid-1": _group(
+                "mbid-1",
+                "Fixture Album",
+                "2018-04-01",
+                genres=_genres(("art pop", 2), ("dream pop", 1)),
+            )
+        },
     )
-    with Session(library_db) as db:  # leave only the zero-genre album pending
+    with Session(library_db) as db:  # leave only the one album pending
         db.add(_existing_meta("2", "mbid-2"))
         db.commit()
 
     stats = enrich_music(library_db, client)
 
     assert stats.matched == 1
-    assert stats.fallback == 1
     assert stats.genres == 2
     assert stats.descriptors == 0
-    assert client.artist_calls == ["artist-1"]
 
 
 def test_batch_logs_one_line_per_album(
@@ -410,14 +380,13 @@ def test_batch_logs_a_recorded_miss_at_debug(
     assert len([message for message in messages if message.endswith("recorded miss")]) == 2
 
 
-def test_batch_logs_the_artist_fallback_at_debug(
+def test_batch_logs_a_zero_genre_album_without_a_fallback(
     library_db: Engine, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.DEBUG, logger="arthouse.enrich_music")
     client = FakeMusicBrainz(
         [_hit("mbid-1", "Fixture Album", "2018-04-01")],
         {"mbid-1": _group("mbid-1", "Fixture Album", "2018-04-01")},
-        {"artist-1": {"genres": _genres(("art pop", 2), ("dream pop", 1))}},
     )
     with Session(library_db) as db:  # leave only the zero-genre album pending
         db.add(_existing_meta("2", "mbid-2"))
@@ -425,9 +394,9 @@ def test_batch_logs_the_artist_fallback_at_debug(
 
     enrich_music(library_db, client)
 
-    assert "no album genres; artist fallback via artist-1" in [
-        record.getMessage() for record in caplog.records
-    ]
+    messages = [record.getMessage() for record in caplog.records]
+    assert "matched mbid-1 'Fixture Album': 0 album genres, 0 tags" in messages
+    assert not any("artist" in message for message in messages)
 
 
 def test_unmatched_album_records_a_miss(library_db: Engine) -> None:

@@ -17,14 +17,14 @@
           <h2 class="text-sm font-semibold tracking-wide text-muted uppercase">Genres</h2>
           <ul class="mt-2 flex flex-wrap gap-2">
             {% for genre in primary_genres %}
-              <li class="rounded-full border border-line px-3 py-1 text-xs" title="{{ genre.name }}{% if genre.count %} — {{ genre.count }} votes{% endif %}">{{ genre.name }}</li>
+              <li class="rounded-full border border-line px-3 py-1 text-xs">{{ genre.name }}</li>
             {% endfor %}
           </ul>
           {% if secondary_genres %}
             <h3 class="mt-3 text-xs font-medium tracking-wide text-muted uppercase">More genres</h3>
             <ul class="mt-1 flex flex-wrap gap-2">
               {% for genre in secondary_genres %}
-                <li class="rounded-full border border-line px-3 py-1 text-xs text-muted" title="{{ genre.name }}{% if genre.count %} — {{ genre.count }} votes{% endif %}">{{ genre.name }}</li>
+                <li class="rounded-full border border-line px-3 py-1 text-xs text-muted">{{ genre.name }}</li>
               {% endfor %}
             </ul>
           {% endif %}

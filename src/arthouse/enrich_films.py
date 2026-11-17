@@ -41,7 +41,6 @@ class TmdbMovie(TypedDict):
     original_title: NotRequired[str]
     release_date: NotRequired[str]
     overview: NotRequired[str]
-    poster_path: NotRequired[str | None]
     genre_ids: NotRequired[list[int]]
 
 
@@ -342,7 +341,6 @@ def enrich_films(engine: Engine, client: FilmClient, limit: int | None = None) -
                     provider=TMDB_PROVIDER,
                     external_id=str(match["id"]),
                     summary=match.get("overview", ""),
-                    image_path=match.get("poster_path"),
                     credit=client.directors(match["id"]),
                     tags_fetched=True,
                     matched_title=match.get("title", ""),

@@ -78,7 +78,6 @@ class ItemMeta(Base):
     provider: Mapped[str]  # tmdb | musicbrainz | openlibrary
     external_id: Mapped[str]  # TMDB id, MusicBrainz MBID, OpenLibrary work id
     summary: Mapped[str]  # overview / description
-    image_path: Mapped[str | None]  # poster / cover
     # None means "not fetched yet"; "" means the provider lists no credit.
     credit: Mapped[str | None] = mapped_column(default=None)
     # False means the provider's separate tag fetch has not been attempted yet;
@@ -115,10 +114,8 @@ class ItemGenre(Base):
 
     Genres are kept apart from descriptor tags because they are shelf data,
     not vocabulary input. `count` is the provider's vote tally, which is what
-    ranks the genres and decides the primary/secondary split; providers without
-    votes (TMDB) leave it at zero. `artist_level` marks the fallback: the work
-    itself had no genres, so the artist's were used and the UI may warn that
-    they are approximate.
+    ranks the genres and decides the primary/secondary split (never displayed);
+    providers without votes (TMDB) leave it at zero.
     """
 
     __tablename__: str = "item_genre"
@@ -128,7 +125,6 @@ class ItemGenre(Base):
     provider: Mapped[str] = mapped_column(primary_key=True)
     genre: Mapped[str] = mapped_column(primary_key=True)
     count: Mapped[int] = mapped_column(default=0)
-    artist_level: Mapped[bool] = mapped_column(default=False)
 
 
 class ItemTag(Base):

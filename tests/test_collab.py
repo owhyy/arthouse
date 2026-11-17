@@ -37,7 +37,6 @@ def _add_tmdb_ids(engine: Engine, tmdb_ids: list[int]) -> list[str]:
                     provider="tmdb",
                     external_id=str(tmdb_id),
                     summary="",
-                    image_path=None,
                     credit="",
                     matched_title=item.title,
                     matched_year=item.year,

@@ -57,13 +57,6 @@ class ArtistCredit(TypedDict):
     artist: NotRequired[dict[str, str]]
 
 
-class Artist(TypedDict, total=False):
-    """An artist's own genres, used only as a display fallback."""
-
-    name: str
-    genres: list[Genre]
-
-
 # `first-release-date` and `artist-credit` are hyphenated keys, so this entity
 # needs the functional TypedDict syntax. `artist-credit` and `genres` are absent
 # from one payload or the other rather than merely empty, so they stay optional.
@@ -186,8 +179,6 @@ class MusicClient(ReleaseGroupSearcher, Protocol):
     """Everything one album enrichment needs from a music provider."""
 
     def release_group(self, mbid: str) -> ReleaseGroup: ...
-
-    def artist(self, mbid: str) -> Artist: ...
 
 
 class MusicBrainzClient:
@@ -321,13 +312,7 @@ class MusicBrainzClient:
         """One release group with its curated genres and community tags.
 
         `inc=genres` is an entity-lookup feature, which is why the search hit
-        cannot stand in for this call. `artist-credit` would need its own `inc`
-        term; the artist id for the fallback is taken from the search hit.
+        cannot stand in for this call.
         """
         payload = cast(ReleaseGroup, self._get(f"/release-group/{mbid}", {"inc": "genres+tags"}))
-        return payload
-
-    def artist(self, mbid: str) -> Artist:
-        """One artist's genres, used when a release group has none of its own."""
-        payload = cast(Artist, self._get(f"/artist/{mbid}", {"inc": "genres"}))
         return payload

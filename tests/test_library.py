@@ -42,7 +42,6 @@ def _enrich_film(
                 provider="tmdb",
                 external_id="1",
                 summary=overview,
-                image_path=None,
                 credit=director,
                 matched_title="Fixture Film A",
                 matched_year=1999,
@@ -327,7 +326,6 @@ def _add_music_genres(
                 provider="musicbrainz",
                 external_id="mbid-1",
                 summary="",
-                image_path=None,
                 credit="Fixture Artist",
                 matched_title="Fixture Album",
                 matched_year=2018,
@@ -371,7 +369,8 @@ async def test_music_detail_page_splits_primary_and_secondary_genres(
     # The voted head comes before the tail, and the tail is still shown.
     assert response.text.index("pop rock") < response.text.index("More genres")
     assert response.text.index("More genres") < response.text.index("beat music")
-    assert "rock — 17 votes" in response.text
+    # The tally only ranks the genres; it is never shown, and "votes" is jargon.
+    assert "votes" not in response.text
 
 
 async def test_music_grid_ranks_genres_and_fades_the_overflow(
@@ -589,14 +588,13 @@ async def test_unknown_item_404s(
 
 def test_genres_never_feed_the_vocabulary(library_db: Engine) -> None:
     with Session(library_db) as db:
-        for name, artist_level in (("Drama", False), ("art pop", True)):
+        for name in ("Drama", "art pop"):
             db.add(
                 ItemGenre(
                     source="letterboxd",
                     source_id="https://boxd.it/aaa",
                     provider="tmdb",
                     genre=name,
-                    artist_level=artist_level,
                 )
             )
         db.add(

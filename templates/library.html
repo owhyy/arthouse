@@ -129,9 +129,10 @@
               {% if item_genres %}
                 {% set tags = item_genres.get(item.source_id, []) %}
                 {% if tags %}
-                  <ul class="mt-2 flex flex-wrap gap-1">
-                    {% for tag in tags %}
-                      <li class="rounded-full border border-line px-2 py-0.5 text-xs text-muted">{{ tag }}</li>
+                  <ul class="genre-strip mt-2 flex flex-nowrap gap-1"
+                      title="{{ tags | map(attribute='name') | join(', ') }}">
+                    {% for genre in tags %}
+                      <li class="shrink-0 rounded-full border border-line px-2 py-0.5 text-xs text-muted">{{ genre.name }}</li>
                     {% endfor %}
                   </ul>
                 {% endif %}

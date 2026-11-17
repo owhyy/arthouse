@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from arthouse.deps import get_db
 from arthouse.library import (
     Base,
+    GenreRow,
     ItemGenre,
     ItemMeta,
     ItemTag,
@@ -18,6 +19,7 @@ from arthouse.library import (
     normalize_title,
     query_item,
     query_items,
+    split_genres,
 )
 from arthouse.routes import pages
 from arthouse.tagging import rebuild_descriptors
@@ -174,6 +176,8 @@ async def test_detail_page_shows_synopsis_and_genres(
     assert "Synopsis via TMDB" in response.text
     assert "Drama" in response.text
     assert "Fantasy" in response.text
+    # TMDB genres have no vote tally, so they never split into a second tier.
+    assert "More genres" not in response.text
     assert "Fixture Director" in response.text  # film credit line
     assert "Descriptors" in response.text
     assert "loneliness" in response.text
@@ -211,6 +215,119 @@ async def test_film_grid_shows_genre_tags(
     assert "Drama" in response.text
     assert "Fixture Director" in response.text  # director stands in for creator
     assert "A fixture synopsis." not in response.text  # synopsis is detail-only
+
+
+def _add_music_genres(
+    engine: Engine, genres: list[tuple[str, int]], *, source_id: str = "1"
+) -> None:
+    """Give the fixture album metadata and voted genres, like the music pass does."""
+    with Session(engine) as db:
+        db.add(
+            ItemMeta(
+                source="rateyourmusic",
+                source_id=source_id,
+                provider="musicbrainz",
+                external_id="mbid-1",
+                summary="",
+                image_path=None,
+                credit="Fixture Artist",
+                matched_title="Fixture Album",
+                matched_year=2018,
+            )
+        )
+        for name, count in genres:
+            db.add(
+                ItemGenre(
+                    source="rateyourmusic",
+                    source_id=source_id,
+                    provider="musicbrainz",
+                    genre=name,
+                    count=count,
+                )
+            )
+        db.commit()
+
+
+async def test_music_detail_page_splits_primary_and_secondary_genres(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    _add_music_genres(
+        library_db,
+        [
+            ("rock", 17),
+            ("folk rock", 7),
+            ("pop rock", 7),
+            ("pop", 6),
+            ("beat music", 1),
+        ],
+    )
+    with Session(library_db) as db:
+        album = next(i for i in query_items(db) if i.title == "Fixture Album")
+    _override_db(test_app, library_db)
+    try:
+        response = await client.get(f"/library/{album.id}")
+    finally:
+        _clear_override(test_app)
+    assert response.status_code == 200
+    assert "More genres" in response.text
+    # The voted head comes before the tail, and the tail is still shown.
+    assert response.text.index("pop rock") < response.text.index("More genres")
+    assert response.text.index("More genres") < response.text.index("beat music")
+    assert "rock — 17 votes" in response.text
+
+
+async def test_music_grid_ranks_genres_and_fades_the_overflow(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    _add_music_genres(
+        library_db,
+        [("rock", 17), ("folk rock", 7), ("pop", 6), ("beat music", 1)],
+    )
+    _override_db(test_app, library_db)
+    try:
+        response = await client.get("/library?tab=music")
+    finally:
+        _clear_override(test_app)
+    assert response.status_code == 200
+    assert "genre-strip" in response.text
+    # The strip clips, so the title carries the full list in rank order.
+    assert 'title="rock, folk rock, pop, beat music"' in response.text
+
+
+def test_split_genres_keeps_the_voted_head_as_primary() -> None:
+    genres = [
+        GenreRow("rock", 17),
+        GenreRow("folk rock", 7),
+        GenreRow("pop rock", 7),
+        GenreRow("pop", 6),
+        GenreRow("beat music", 1),
+    ]
+    assert split_genres(genres) == (
+        [GenreRow("rock", 17), GenreRow("folk rock", 7), GenreRow("pop rock", 7)],
+        [GenreRow("pop", 6), GenreRow("beat music", 1)],
+    )
+
+
+def test_split_genres_keeps_everything_without_votes() -> None:
+    # TMDB genres carry no tally, so the film display must not change.
+    genres = [GenreRow("Drama", 0), GenreRow("Fantasy", 0)]
+    assert split_genres(genres) == (genres, [])
+
+
+def test_split_genres_treats_a_single_vote_as_no_signal() -> None:
+    genres = [GenreRow("a", 1), GenreRow("b", 1)]
+    assert split_genres(genres) == (genres, [])
+
+
+def test_split_genres_caps_a_wide_primary_cluster() -> None:
+    genres = [GenreRow(f"g{index}", 5) for index in range(6)]
+    primary, secondary = split_genres(genres)
+    assert len(primary) == 4
+    assert secondary == [GenreRow("g4", 5), GenreRow("g5", 5)]
+
+
+def test_split_genres_handles_an_empty_list() -> None:
+    assert split_genres([]) == ([], [])
 
 
 async def test_library_filters_films_by_descriptor(

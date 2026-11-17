@@ -27,3 +27,12 @@
     color-scheme: light;
   }
 }
+
+@layer components {
+  /* One-line genre row on the cards: the mask fades the overflow instead of
+     clipping it mid-glyph, so "as many as fit" reads as intentional. */
+  .genre-strip {
+    overflow: hidden;
+    mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+  }
+}

@@ -23,10 +23,14 @@ search box filters the active tab by item title as you type (300 ms debounce;
 the form also works as a plain GET). Every entry links to a detail page with the rating date, the original platform
 rating, the platform it came from, and your review when the export has one
 (Letterboxd `reviews.csv`, RYM `Review`, Goodreads `My Review`; HTML is
-stripped and paragraphs preserved). Enriched films also show TMDB genre tags
-(on cards and the detail page), the TMDB synopsis and faceted descriptors
-(detail page only), and the director in the same credit line where books show
-the author and music the artist.
+stripped and paragraphs preserved). Enriched items also show provider genres on
+cards and the detail page. MusicBrainz genres carry a vote tally, so they are
+ranked by it: the detail page marks the best-voted ones as primary and puts the
+rest under "More genres", while a card keeps a single ranked line and fades
+whatever does not fit. TMDB genres have no votes and render as they always have.
+Films also show the TMDB synopsis and faceted descriptors (detail page only),
+and the director in the same credit line where books show the author and music
+the artist.
 A facet-grouped descriptor filter narrows **any** tab (`?descriptor=…`);
 descriptor chips on detail pages link to the same filtered view. Facets are
 `mood`, `tone`, `atmosphere`, `setting`, `theme`, `style` and `creator`.
@@ -107,13 +111,15 @@ Matching is stricter than TMDB's: the normalized title must match exactly, so a
 release MusicBrainz files under another title is reported as unmatched rather
 than guessed. Year only breaks ties between hits — a reissue legitimately
 carries a later date — and an album beats a same-name single. Genres come from
-the album's curated genres; when it has none, the artist's genres are used and
-the rows are flagged `artist_level` in `item_genre`. Community tags are the
-descriptor source; artist tags are never borrowed, because a tag names one
-album's mood. A matched album is never re-fetched, so a record that had no
-genres when it was enriched stays that way until it is cleared and re-run. An
-album that does not match is recorded in `item_miss`, so a later run skips it
-instead of searching the same query again; delete its row to retry.
+the album's curated genres, and every row keeps the community's vote tally,
+which is what ranks the display and decides the primary/secondary split. When
+the album has no genres the artist's are used, flagged `artist_level` in
+`item_genre`. Community tags are the descriptor source; artist tags are never
+borrowed, because a tag names one album's mood. A matched album is never
+re-fetched, so a record that had no genres when it was enriched stays that way
+until it is cleared and re-run. An album that does not match is recorded in
+`item_miss`, so a later run skips it instead of searching the same query again;
+delete its row to retry.
 
 The batch logs one line per album to stderr — `fetching [12/272] Grace — Jeff
 Buckley (1994)` — so stdout keeps only the summary and the unmatched list. The
@@ -174,7 +180,10 @@ across 272 items, and 234 of 294 films get at least three descriptors.
 `item_descriptor` stores only `(source, source_id, name)`; the facet lives in the
 vocabulary, so there is no second copy to drift. The old `descriptor` facet cache
 and the v1 `film_genre`/`film_keyword` tables are dropped at startup — all of it
-is regenerable, so re-run the enrichment command instead of migrating it.
+is regenerable, so re-run the enrichment command instead of migrating it. The
+same goes for a schema change: `create_all` never alters an existing table, so
+delete `data/library.db`, let the app rebuild it from the exports, and re-run
+the enrichment passes.
 
 ### Collaborative similarity (MovieLens)
 

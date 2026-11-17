@@ -20,7 +20,7 @@ from sqlalchemy import Engine, create_engine, select
 from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
-from arthouse.library import Base, Item, ItemGenre, ItemMeta, ItemMiss, ItemTag
+from arthouse.library import Base, GenreRow, Item, ItemGenre, ItemMeta, ItemMiss, ItemTag
 from arthouse.logs import configure_logging
 from arthouse.musicbrainz import (
     Artist,
@@ -44,9 +44,18 @@ def _positive_names(entries: Sequence[Tag | Genre]) -> list[str]:
     return list(dict.fromkeys(entry["name"] for entry in entries if entry["count"] > 0))
 
 
-def album_genres(group: ReleaseGroup) -> list[str]:
-    """Curated genres for the album itself; display-only."""
-    return _positive_names(group.get("genres", []))
+def _positive_genres(entries: Sequence[Tag | Genre]) -> list[GenreRow]:
+    """Voted-up genres with their tallies, deduped by name, best vote kept."""
+    best: dict[str, int] = {}
+    for entry in entries:
+        if entry["count"] > 0:
+            best[entry["name"]] = max(best.get(entry["name"], 0), entry["count"])
+    return [GenreRow(name, count) for name, count in best.items()]
+
+
+def album_genres(group: ReleaseGroup) -> list[GenreRow]:
+    """Curated genres for the album itself, with their tallies; display-only."""
+    return _positive_genres(group.get("genres", []))
 
 
 def album_descriptors(group: ReleaseGroup) -> list[str]:
@@ -54,20 +63,23 @@ def album_descriptors(group: ReleaseGroup) -> list[str]:
     return _positive_names(group.get("tags", []))
 
 
-def artist_genres(artist: Artist) -> list[str]:
-    """Curated genres from the artist fallback; display-only."""
-    return _positive_names(artist.get("genres", []))
+def artist_genres(artist: Artist) -> list[GenreRow]:
+    """Curated genres from the artist fallback, with their tallies; display-only."""
+    return _positive_genres(artist.get("genres", []))
 
 
-def _add_genres(db: Session, item: Item, names: list[str], *, artist_level: bool = False) -> None:
-    """Add display genres; names are already deduped and vote-filtered."""
-    for name in names:
+def _add_genres(
+    db: Session, item: Item, genres: Sequence[GenreRow], *, artist_level: bool = False
+) -> None:
+    """Add display genres; rows are already deduped and vote-filtered."""
+    for genre in genres:
         db.add(
             ItemGenre(
                 source=item.source,
                 source_id=item.source_id,
                 provider=MUSIC_PROVIDER,
-                genre=name,
+                genre=genre.name,
+                count=genre.count,
                 artist_level=artist_level,
             )
         )
@@ -149,7 +161,7 @@ def enrich_music_item(db: Session, client: MusicClient, item: Item) -> MusicEnri
         len(genres),
         len(descriptors),
     )
-    fallback_genres: list[str] = []
+    fallback_genres: list[GenreRow] = []
     artist_fallback = not genres
     if artist_fallback and (artist_id := _artist_id(hit)) is not None:
         log.debug("no album genres; artist fallback via %s", artist_id)

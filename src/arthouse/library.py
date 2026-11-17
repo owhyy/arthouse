@@ -6,8 +6,10 @@
 
 import csv
 import html
+import math
 import re
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -20,6 +22,22 @@ from arthouse.vocab import FACETS, Facet, facet_of
 MEDIA_ORDER = ("music", "film", "book")
 MEDIA_LABELS = {"music": "Music", "film": "Films", "book": "Books"}
 PROVIDER_LABELS = {"tmdb": "TMDB", "musicbrainz": "MusicBrainz", "openlibrary": "OpenLibrary"}
+
+# Display genres carry the provider's vote tally so the UI can rank them. The
+# primary cut is a ratio of the best-voted genre rather than a fixed number,
+# because vote totals differ by an order of magnitude between albums; below two
+# votes there is no signal, so every genre stays primary and nothing is hidden.
+PRIMARY_GENRE_RATIO = 0.4
+PRIMARY_GENRE_MIN_COUNT = 2
+PRIMARY_GENRE_MAX = 4
+
+
+@dataclass(frozen=True)
+class GenreRow:
+    """One display genre and the provider's vote tally for it."""
+
+    name: str
+    count: int
 
 
 class Base(DeclarativeBase):
@@ -134,9 +152,11 @@ class ItemGenre(Base):
     """One display genre for an item.
 
     Genres are kept apart from descriptor tags because they are shelf data,
-    not vocabulary input. `artist_level` marks the fallback: the work itself
-    had no genres, so the artist's were used and the UI may warn that they are
-    approximate.
+    not vocabulary input. `count` is the provider's vote tally, which is what
+    ranks the genres and decides the primary/secondary split; providers without
+    votes (TMDB) leave it at zero. `artist_level` marks the fallback: the work
+    itself had no genres, so the artist's were used and the UI may warn that
+    they are approximate.
     """
 
     __tablename__: str = "item_genre"
@@ -145,6 +165,7 @@ class ItemGenre(Base):
     source_id: Mapped[str] = mapped_column(primary_key=True)
     provider: Mapped[str] = mapped_column(primary_key=True)
     genre: Mapped[str] = mapped_column(primary_key=True)
+    count: Mapped[int] = mapped_column(default=0)
     artist_level: Mapped[bool] = mapped_column(default=False)
 
 
@@ -435,22 +456,22 @@ def query_item(db: Session, item_id: int) -> Item | None:
     return db.get(Item, item_id)
 
 
-def query_item_meta(db: Session, source: str, source_id: str) -> tuple[ItemMeta, list[str]] | None:
+def query_item_meta(
+    db: Session, source: str, source_id: str
+) -> tuple[ItemMeta, list[GenreRow]] | None:
     """Provider metadata and display genres for one item, or None when unenriched."""
     meta = db.get(ItemMeta, (source, source_id))
     if meta is None:
         return None
-    genres = list(
-        db.scalars(
-            select(ItemGenre.genre)
-            .where(
-                ItemGenre.source == source,
-                ItemGenre.source_id == source_id,
-            )
-            .order_by(ItemGenre.genre)
+    rows = db.execute(
+        select(ItemGenre.genre, ItemGenre.count)
+        .where(
+            ItemGenre.source == source,
+            ItemGenre.source_id == source_id,
         )
-    )
-    return meta, genres
+        .order_by(ItemGenre.count.desc(), ItemGenre.genre)
+    ).all()
+    return meta, [GenreRow(name, count) for name, count in rows]
 
 
 def query_item_credits(db: Session) -> dict[str, str]:
@@ -458,18 +479,39 @@ def query_item_credits(db: Session) -> dict[str, str]:
     return {meta.source_id: meta.credit for meta in db.scalars(select(ItemMeta)) if meta.credit}
 
 
-def query_item_genres(db: Session, media_type: str) -> dict[str, list[str]]:
-    """Display genres keyed by platform id — one query for the whole grid."""
-    genres: dict[str, list[str]] = {}
+def query_item_genres(db: Session, media_type: str) -> dict[str, list[GenreRow]]:
+    """Display genres keyed by platform id, best-voted first — one query for the grid."""
+    genres: dict[str, list[GenreRow]] = {}
     rows = db.execute(
-        select(ItemGenre.source_id, ItemGenre.genre)
+        select(ItemGenre.source_id, ItemGenre.genre, ItemGenre.count)
         .join(
             Item,
             and_(Item.source == ItemGenre.source, Item.source_id == ItemGenre.source_id),
         )
         .where(Item.media_type == media_type)
-        .order_by(ItemGenre.genre)
+        .order_by(ItemGenre.count.desc(), ItemGenre.genre)
     ).all()
-    for source_id, genre in rows:
-        genres.setdefault(source_id, []).append(genre)
+    for source_id, genre, count in rows:
+        genres.setdefault(source_id, []).append(GenreRow(genre, count))
     return genres
+
+
+def split_genres(genres: Sequence[GenreRow]) -> tuple[list[GenreRow], list[GenreRow]]:
+    """Split ranked genres into primary and secondary for display.
+
+    Input must be in rank order. A genre is primary when its tally is at least
+    `PRIMARY_GENRE_RATIO` of the top genre's and it has at least
+    `PRIMARY_GENRE_MIN_COUNT` votes, capped at `PRIMARY_GENRE_MAX` so a cluster
+    of equally-voted sub-genres cannot take over the header. Providers without
+    votes leave every count at zero, which falls through to "all primary" and
+    keeps their display unchanged.
+    """
+    if not genres:
+        return [], []
+    top = genres[0].count
+    if top < PRIMARY_GENRE_MIN_COUNT:
+        return list(genres), []
+    cut = max(PRIMARY_GENRE_MIN_COUNT, math.ceil(top * PRIMARY_GENRE_RATIO))
+    # Ranked input makes the qualifying genres a prefix, so the cap can slice.
+    primary = [genre for genre in genres if genre.count >= cut][:PRIMARY_GENRE_MAX]
+    return primary, list(genres[len(primary) :])

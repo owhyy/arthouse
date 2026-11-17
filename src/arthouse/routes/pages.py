@@ -6,6 +6,7 @@ from arthouse.deps import DbSession, templates
 from arthouse.library import (
     MEDIA_LABELS,
     MEDIA_ORDER,
+    GenreRow,
     ItemMeta,
     query_descriptor_options,
     query_item,
@@ -14,6 +15,7 @@ from arthouse.library import (
     query_item_genres,
     query_item_meta,
     query_items,
+    split_genres,
 )
 from arthouse.vocab import lookup
 
@@ -31,10 +33,11 @@ async def library_detail(request: Request, item_id: int, db: DbSession):
     if item is None:
         raise HTTPException(status_code=404)
     item_meta: ItemMeta | None = None
-    genres: list[str] = []
+    genres: list[GenreRow] = []
     enriched = query_item_meta(db, item.source, item.source_id)
     if enriched is not None:
         item_meta, genres = enriched
+    primary_genres, secondary_genres = split_genres(genres)
     descriptor_groups = query_item_descriptor_groups(db, item.source, item.source_id)
     return templates.TemplateResponse(
         request,
@@ -43,7 +46,8 @@ async def library_detail(request: Request, item_id: int, db: DbSession):
             "title": item.title,
             "item": item,
             "item_meta": item_meta,
-            "genres": genres,
+            "primary_genres": primary_genres,
+            "secondary_genres": secondary_genres,
             "descriptor_groups": descriptor_groups,
         },
     )

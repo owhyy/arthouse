@@ -14,6 +14,7 @@ from arthouse.enrich_music import (
     enrich_music_item,
 )
 from arthouse.library import (
+    GenreRow,
     Item,
     ItemGenre,
     ItemMeta,
@@ -114,7 +115,7 @@ def test_album_mapping_keeps_genres_and_descriptors_separate() -> None:
         genres=_genres(("art pop", 3), ("rejected genre", 0)),
         tags=_tags(("melancholy", 5), ("melancholy", 2), ("rejected tag", -1)),
     )
-    assert album_genres(group) == ["art pop"]
+    assert album_genres(group) == [GenreRow("art pop", 3)]
     assert album_descriptors(group) == ["melancholy"]
 
 
@@ -122,7 +123,7 @@ def test_artist_mapping_reads_genres_only() -> None:
     artist: Artist = {
         "genres": _genres(("art pop", 4), ("rejected genre", 0)),
     }
-    assert artist_genres(artist) == ["art pop"]
+    assert artist_genres(artist) == [GenreRow("art pop", 4)]
 
 
 def test_matched_album_writes_meta_and_album_rows(library_db: Engine) -> None:
@@ -152,7 +153,7 @@ def test_matched_album_writes_meta_and_album_rows(library_db: Engine) -> None:
     assert client.artist_calls == []
     with Session(library_db) as db:
         meta = db.get(ItemMeta, ("rateyourmusic", "1"))
-        genres = {(row.genre, row.artist_level) for row in db.scalars(select(ItemGenre))}
+        genres = {(row.genre, row.count, row.artist_level) for row in db.scalars(select(ItemGenre))}
         tags = {row.tag for row in db.scalars(select(ItemTag))}
     assert meta is not None
     assert meta.provider == "musicbrainz"
@@ -163,7 +164,7 @@ def test_matched_album_writes_meta_and_album_rows(library_db: Engine) -> None:
     assert meta.tags_fetched
     assert meta.matched_title == "Fixture Album"
     assert meta.matched_year == 2018
-    assert genres == {("art pop", False)}
+    assert genres == {("art pop", 3, False)}
     assert tags == {"melancholy"}
 
 
@@ -194,17 +195,17 @@ def test_artist_genre_fallback_fires_when_the_album_has_no_genres(
     assert result.artist_genres == 2
     assert client.artist_calls == ["artist-9"]
     with Session(library_db) as db:
-        genres = {(row.genre, row.artist_level) for row in db.scalars(select(ItemGenre))}
+        genres = {(row.genre, row.count, row.artist_level) for row in db.scalars(select(ItemGenre))}
         tags = {row.tag for row in db.scalars(select(ItemTag))}
         found = query_item_meta(db, "rateyourmusic", "1")
         grid = query_item_genres(db, "music")
     assert found is not None
     meta, display_genres = found
     assert meta is not None
-    assert genres == {("art pop", True), ("dream pop", True)}
+    assert genres == {("art pop", 4, True), ("dream pop", 1, True)}
     assert tags == {"melancholy"}
-    assert display_genres == ["art pop", "dream pop"]
-    assert grid == {"1": ["art pop", "dream pop"]}
+    assert display_genres == [GenreRow("art pop", 4), GenreRow("dream pop", 1)]
+    assert grid == {"1": [GenreRow("art pop", 4), GenreRow("dream pop", 1)]}
 
 
 def test_album_without_tags_does_not_borrow_artist_tags(library_db: Engine) -> None:
@@ -223,9 +224,9 @@ def test_album_without_tags_does_not_borrow_artist_tags(library_db: Engine) -> N
     assert result.artist_genres == 0
     assert client.artist_calls == []
     with Session(library_db) as db:
-        genres = {(row.genre, row.artist_level) for row in db.scalars(select(ItemGenre))}
+        genres = {(row.genre, row.count, row.artist_level) for row in db.scalars(select(ItemGenre))}
         tags = list(db.scalars(select(ItemTag)))
-    assert genres == {("art pop", False)}
+    assert genres == {("art pop", 3, False)}
     assert tags == []
 
 

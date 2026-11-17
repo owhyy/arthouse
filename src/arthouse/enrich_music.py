@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
 from arthouse.db import create_db_engine, create_schema
+from arthouse.enrichment import item_label, record_miss
 from arthouse.logs import configure_logging
 from arthouse.models import GenreRow, Item, ItemGenre, ItemMeta, ItemMiss, ItemTag
 from arthouse.musicbrainz import (
@@ -138,18 +139,10 @@ def enrich_music_item(db: Session, client: MusicClient, item: Item) -> MusicEnri
     if hit is None:
         # Remember the miss: the title is matched exactly, so a rerun would
         # search the same query and miss again. Delete the row to retry.
-        if db.get(ItemMiss, (item.source, item.source_id, MUSIC_PROVIDER)) is None:
-            db.add(
-                ItemMiss(
-                    source=item.source,
-                    source_id=item.source_id,
-                    provider=MUSIC_PROVIDER,
-                )
-            )
-            db.commit()
-            log.debug("no match for %s; recorded miss", _label(item))
+        if record_miss(db, item, MUSIC_PROVIDER):
+            log.debug("no match for %s; recorded miss", item_label(item))
         else:
-            log.debug("no match for %s; miss already recorded", _label(item))
+            log.debug("no match for %s; miss already recorded", item_label(item))
         return None
 
     group = client.release_group(hit["id"])
@@ -213,12 +206,6 @@ class MusicStats:
     unmatched: list[str] = field(default_factory=list)
 
 
-def _label(item: Item) -> str:
-    """One-line identification for the unmatched report; title alone collides."""
-    label = f"{item.title} — {item.creator}" if item.creator else item.title
-    return f"{label} ({item.year})" if item.year is not None else label
-
-
 def enrich_music(engine: Engine, client: MusicClient, limit: int | None = None) -> MusicStats:
     """Enrich up to `limit` not-yet-enriched albums; each match commits itself.
 
@@ -260,10 +247,10 @@ def enrich_music(engine: Engine, client: MusicClient, limit: int | None = None) 
         for index, album in enumerate(pending, start=1):
             # One line per album keeps a ten-minute run watchable at INFO;
             # everything else (queries, retries, payload detail) is DEBUG.
-            log.info("fetching [%d/%d] %s", index, len(pending), _label(album))
+            log.info("fetching [%d/%d] %s", index, len(pending), item_label(album))
             result = enrich_music_item(db, client, album)
             if result is None:
-                stats.unmatched.append(_label(album))
+                stats.unmatched.append(item_label(album))
             else:
                 stats.matched += 1
                 stats.fallback += result.artist_fallback

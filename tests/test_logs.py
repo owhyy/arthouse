@@ -3,10 +3,11 @@
 import logging
 from collections.abc import Iterator
 
+import httpx
 import pytest
 
 from arthouse.config import Settings
-from arthouse.logs import configure_logging
+from arthouse.logs import configure_logging, response_headers
 
 NOISY = ("httpx", "httpcore")
 
@@ -51,3 +52,9 @@ def test_configure_logging_stays_at_info_by_default(monkeypatch: pytest.MonkeyPa
     configure_logging()
 
     assert logging.getLogger().level == logging.INFO
+
+
+def test_response_headers_fit_on_one_sorted_line() -> None:
+    response = httpx.Response(503, headers={"b": "2", "a": "1"})
+
+    assert response_headers(response) == "a=1; b=2"

@@ -3,10 +3,11 @@
 Run with: uv run python -m arthouse.enrich_films [--limit N]
 
 Enrichment is keyed by (source, source_id) so it survives library rebuilds;
-re-runs skip films that are already enriched.
+re-runs skip films that are already enriched or already missed.
 """
 
 import argparse
+import logging
 import time
 from dataclasses import dataclass, field
 from types import TracebackType
@@ -17,16 +18,20 @@ from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
-from arthouse.db import create_db_engine
+from arthouse.db import create_db_engine, create_schema
+from arthouse.enrichment import item_label, record_miss
 from arthouse.library import normalize_title
-from arthouse.logs import configure_logging
-from arthouse.models import Item, ItemGenre, ItemMeta, ItemTag
+from arthouse.logs import configure_logging, response_headers
+from arthouse.models import Item, ItemGenre, ItemMeta, ItemMiss, ItemTag
 from arthouse.tagging import rebuild_descriptors
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
+TMDB_PROVIDER = "tmdb"
 YEAR_TOLERANCE = 1  # Letterboxd/library years can differ from TMDB's primary release
 MAX_ATTEMPTS = 3
 RETRY_BACKOFF = 2.0  # seconds; used when TMDB sends no Retry-After header
+
+log = logging.getLogger("arthouse.enrich_films")
 
 
 class TmdbMovie(TypedDict):
@@ -138,7 +143,13 @@ class FilmClient(Protocol):
 class TmdbClient:
     """Thin TMDB v3 client; accepts a v3 API key or a v4 read access token."""
 
-    def __init__(self, api_key: str, timeout: float = 20.0) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        timeout: float = 20.0,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
         headers: dict[str, str] = {}
         params: dict[str, str] = {}
         if api_key.startswith("eyJ"):  # v4 read access token
@@ -146,7 +157,11 @@ class TmdbClient:
         else:  # v3 API key
             params["api_key"] = api_key
         self._client: httpx.Client = httpx.Client(
-            base_url=TMDB_BASE_URL, headers=headers, params=params, timeout=timeout
+            base_url=TMDB_BASE_URL,
+            headers=headers,
+            params=params,
+            timeout=timeout,
+            transport=transport,
         )
         self._genres: dict[int, str] | None = None
 
@@ -164,6 +179,7 @@ class TmdbClient:
     def _get(self, path: str, params: dict[str, str | int] | None = None) -> object:
         """GET with retries, so one 429/5xx does not abort a 300-film batch."""
         for attempt in range(MAX_ATTEMPTS):
+            log.debug("GET %s %s", path, params or {})
             response = self._client.get(path, params=params)
             transient = response.status_code == 429 or response.status_code >= 500
             if transient and attempt < MAX_ATTEMPTS - 1:
@@ -173,8 +189,28 @@ class TmdbClient:
                     wait = float(retry_after) if retry_after is not None else RETRY_BACKOFF
                 except ValueError:
                     wait = RETRY_BACKOFF
+                log.debug(
+                    "HTTP %d from %s (attempt %d/%d), retrying in %.1fs: %s",
+                    response.status_code,
+                    path,
+                    attempt + 1,
+                    MAX_ATTEMPTS,
+                    wait,
+                    response_headers(response),
+                )
                 time.sleep(wait)
                 continue
+            if response.is_error:
+                # The status alone is in the exception; the body says whether
+                # the query was rejected or the service is unwell, and the
+                # headers record what the server offered.
+                log.warning(
+                    "HTTP %d from %s: %s\n%s",
+                    response.status_code,
+                    path,
+                    response.text[:200],
+                    response_headers(response),
+                )
             response.raise_for_status()
             return cast(object, response.json())
         raise AssertionError("unreachable: the last attempt either returns or raises")
@@ -210,21 +246,34 @@ class TmdbClient:
 @dataclass
 class EnrichStats:
     matched: int = 0
-    skipped: int = 0
+    already_enriched: int = 0  # metadata from an earlier run
+    not_matched: int = 0  # a strict no-match recorded by an earlier run
     backfilled: int = 0
     keywords: int = 0
     unmatched: list[str] = field(default_factory=list)
 
 
 def enrich_films(engine: Engine, client: FilmClient, limit: int | None = None) -> EnrichStats:
-    """Enrich up to `limit` not-yet-enriched films; commits after each match."""
+    """Enrich up to `limit` not-yet-enriched films; commits after each match.
+
+    Films whose previous lookup missed are skipped too: matching is strict, so
+    a miss would only be repeated and would keep taking the first `--limit`
+    slots. Delete the `item_miss` row to have the film tried again.
+    """
     stats = EnrichStats()
     genre_names = client.genre_map()
     with Session(engine) as db:
         done = {
             (meta.source, meta.source_id): meta
-            for meta in db.scalars(select(ItemMeta).where(ItemMeta.provider == "tmdb"))
+            for meta in db.scalars(select(ItemMeta).where(ItemMeta.provider == TMDB_PROVIDER))
         }
+        missed = {
+            (miss.source, miss.source_id)
+            for miss in db.scalars(select(ItemMiss).where(ItemMiss.provider == TMDB_PROVIDER))
+        }
+        # A miss is a finished attempt too; otherwise the same top-rated
+        # unmatched films are retried, and take the first slots, every run.
+        attempted = set(done) | missed
         films = list(
             db.scalars(
                 select(Item)
@@ -234,8 +283,12 @@ def enrich_films(engine: Engine, client: FilmClient, limit: int | None = None) -
         )
         # Skip before applying the limit, otherwise a second `--limit 5` run
         # would re-scan the same five already-enriched films and do nothing.
-        pending = [f for f in films if (f.source, f.source_id) not in done]
-        stats.skipped = len(films) - len(pending)
+        pending = [f for f in films if (f.source, f.source_id) not in attempted]
+        # Report the two skip reasons apart: "skipped" alone hid whether a
+        # film was done or had been given up on.
+        film_keys = {(film.source, film.source_id) for film in films}
+        stats.already_enriched = len(film_keys & set(done))
+        stats.not_matched = len(film_keys & missed)
         if limit is not None:
             pending = pending[:limit]
 
@@ -259,7 +312,7 @@ def enrich_films(engine: Engine, client: FilmClient, limit: int | None = None) -
                     ItemTag(
                         source=meta.source,
                         source_id=meta.source_id,
-                        provider="tmdb",
+                        provider=TMDB_PROVIDER,
                         tag=name,
                     )
                 )
@@ -267,17 +320,26 @@ def enrich_films(engine: Engine, client: FilmClient, limit: int | None = None) -
             db.commit()
             stats.keywords += 1
 
-        for film in pending:
+        for index, film in enumerate(pending, start=1):
+            # One line per film keeps a long run watchable at INFO; everything
+            # else (queries, retries, payload detail) is DEBUG.
+            log.info("fetching [%d/%d] %s", index, len(pending), item_label(film))
             match = find_film(client, film.title, film.year)
             if match is None:
-                stats.unmatched.append(f"{film.title} ({film.year})")
+                # Remember the miss: the title is matched exactly, so a rerun
+                # would search the same query and miss again. Delete the row to retry.
+                if record_miss(db, film, TMDB_PROVIDER):
+                    log.debug("no match for %s; recorded miss", item_label(film))
+                else:
+                    log.debug("no match for %s; miss already recorded", item_label(film))
+                stats.unmatched.append(item_label(film))
                 continue
             release = match.get("release_date") or ""
             db.add(
                 ItemMeta(
                     source=film.source,
                     source_id=film.source_id,
-                    provider="tmdb",
+                    provider=TMDB_PROVIDER,
                     external_id=str(match["id"]),
                     summary=match.get("overview", ""),
                     image_path=match.get("poster_path"),
@@ -293,7 +355,7 @@ def enrich_films(engine: Engine, client: FilmClient, limit: int | None = None) -
                         ItemGenre(
                             source=film.source,
                             source_id=film.source_id,
-                            provider="tmdb",
+                            provider=TMDB_PROVIDER,
                             genre=name,
                         )
                     )
@@ -302,7 +364,7 @@ def enrich_films(engine: Engine, client: FilmClient, limit: int | None = None) -
                     ItemTag(
                         source=film.source,
                         source_id=film.source_id,
-                        provider="tmdb",
+                        provider=TMDB_PROVIDER,
                         tag=keyword,
                     )
                 )
@@ -325,8 +387,8 @@ class KeywordReport:
 
 def keyword_report(engine: Engine, top: int = 25) -> KeywordReport:
     """Count keyword coverage and the most common descriptors."""
-    keywords = ItemTag.provider == "tmdb"
-    tmdb = ItemMeta.provider == "tmdb"
+    keywords = ItemTag.provider == TMDB_PROVIDER
+    tmdb = ItemMeta.provider == TMDB_PROVIDER
     with Session(engine) as db:
         films = db.scalar(select(func.count()).select_from(ItemMeta).where(tmdb)) or 0
         fetched = (
@@ -383,11 +445,14 @@ def main() -> None:
 
     if not settings.tmdb_api_key:
         raise SystemExit("ARTHOUSE_TMDB_API_KEY is not set (see README)")
+    # The app creates the schema at startup, but the CLI may run first.
+    create_schema(engine)
     with TmdbClient(settings.tmdb_api_key) as client:
         stats = enrich_films(engine, client, limit=cast(int | None, args.limit))
     rebuild_descriptors(engine)  # keep the derived vocabulary in sync
     print(
-        f"matched: {stats.matched}, skipped: {stats.skipped}, "
+        f"matched: {stats.matched}, already enriched: {stats.already_enriched}, "
+        + f"not matched in tmdb: {stats.not_matched}, "
         + f"directors backfilled: {stats.backfilled}, "
         + f"keywords fetched: {stats.keywords}, unmatched: {len(stats.unmatched)}"
     )

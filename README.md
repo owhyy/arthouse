@@ -81,7 +81,15 @@ by `(source, source_id)`, so restarting the app (which rebuilds only `items`)
 never discards them; re-runs skip already-enriched films.
 `item_meta.tags_fetched` records the attempt, so a film TMDB has no
 keywords for is not refetched every run. TV entries from the Letterboxd export
-(series, miniseries) have no TMDB movie match and stay unmatched.
+(series, miniseries) have no TMDB movie match: they are recorded in `item_miss`
+and stay unmatched; delete the row to try one again.
+
+The batch logs one line per film to stderr — `fetching [12/294] Seven Samurai
+(1954)` — so stdout keeps only the summary and the unmatched list. The summary
+separates what this run matched from what an earlier run had already enriched
+and what an earlier run had already tried without a match. `ARTHOUSE_DEBUG=1`
+raises the level to DEBUG, which adds every request, every retry with its status
+and wait, and the body and headers of a hard failure.
 
 The enrichment schema is shared by every medium: `item_meta` stores
 provider-neutral fields (`provider`, `external_id`, `summary`, `image_path`,
@@ -255,6 +263,7 @@ db.py            # SQLite engine/pragmas, schema and index creation
 models.py        # ORM models and shared value objects (Item, GenreRow, …)
 queries.py       # read queries: grid paging, detail joins, descriptor options
 library.py       # platform CSV parsers, normalization, build_db
+enrichment.py    # policy shared by the passes: item labels, recorded misses
 vocab.py         # closed cross-media descriptor vocabulary (7 facets, aliases)
 tagging.py       # maps raw provider tags onto the vocabulary; coverage report
 collab.py        # MovieLens adjusted-cosine item-item CF baseline

@@ -17,6 +17,7 @@ import httpx
 
 from arthouse.config import get_settings
 from arthouse.library import normalize_title
+from arthouse.logs import response_headers
 
 MUSICBRAINZ_BASE_URL = "https://musicbrainz.org/ws/2/"
 MAX_ATTEMPTS = 4
@@ -189,11 +190,6 @@ class MusicClient(ReleaseGroupSearcher, Protocol):
     def artist(self, mbid: str) -> Artist: ...
 
 
-def _headers(response: httpx.Response) -> str:
-    """The response headers on one line, so a failure can be diagnosed later."""
-    return "; ".join(f"{key}={value}" for key, value in sorted(response.headers.items()))
-
-
 class MusicBrainzClient:
     """Thin MusicBrainz WS/2 client with a 1 req/s throttle and retries."""
 
@@ -274,7 +270,7 @@ class MusicBrainzClient:
                     attempt + 1,
                     MAX_ATTEMPTS,
                     self._interval,
-                    _headers(response),
+                    response_headers(response),
                 )
                 self._sleep(self._interval)
                 continue
@@ -287,7 +283,7 @@ class MusicBrainzClient:
                     response.status_code,
                     path,
                     response.text[:200],
-                    _headers(response),
+                    response_headers(response),
                 )
             else:
                 self._speed_up()

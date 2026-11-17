@@ -1,11 +1,21 @@
+import logging
 from pathlib import Path
 
+import httpx
+import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from arthouse.enrich_films import TmdbMovie, enrich_films, find_film, keyword_report, match_film
+from arthouse.enrich_films import (
+    TmdbClient,
+    TmdbMovie,
+    enrich_films,
+    find_film,
+    keyword_report,
+    match_film,
+)
 from arthouse.library import build_db
-from arthouse.models import ItemGenre, ItemMeta, ItemTag
+from arthouse.models import ItemGenre, ItemMeta, ItemMiss, ItemTag
 
 
 class FakeTmdb:
@@ -21,9 +31,11 @@ class FakeTmdb:
         self._directors: dict[int, str] = directors or {}
         self._keywords: dict[int, list[str]] = keywords or {}
         self.keyword_calls: int = 0
+        self.search_calls: list[str] = []
 
     def search_movie(self, title: str, year: int | None) -> list[TmdbMovie]:
         del year  # the fake is keyed by title only
+        self.search_calls.append(title)
         return self._results.get(title, [])
 
     def genre_map(self) -> dict[int, str]:
@@ -174,11 +186,132 @@ def test_enrichment_is_idempotent(library_db: Engine) -> None:
     assert first.matched == 1
     assert first.unmatched == ["Fixture Film B (2001)"]  # fake has no result for B
     assert second.matched == 0
-    # Only enriched films are skipped; an unmatched film is retried next run
-    # (a later TMDB entry may make it matchable) and reported again.
-    assert second.skipped == 1
-    assert second.unmatched == ["Fixture Film B (2001)"]
+    # The miss is a finished attempt: the film is neither enriched again nor
+    # searched again, and is reported as an earlier no-match instead.
+    assert second.already_enriched == 1
+    assert second.not_matched == 1
+    assert second.unmatched == []
+    assert fake.search_calls == ["Fixture Film A", "Fixture Film B"]
     assert fake.keyword_calls == 1  # already-fetched keywords are not refetched
+
+
+def test_batch_logs_one_line_per_film(library_db: Engine, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="arthouse.enrich_films")
+    fake = FakeTmdb(
+        {
+            "Fixture Film A": [_movie(1, "Fixture Film A", "1999-05-01", 100, [18])],
+            "Fixture Film B": [_movie(2, "Fixture Film B", "2001-05-01", 50, [18])],
+        }
+    )
+
+    enrich_films(library_db, fake)
+
+    assert [record.getMessage() for record in caplog.records] == [
+        "fetching [1/2] Fixture Film A (1999)",
+        "fetching [2/2] Fixture Film B (2001)",
+    ]
+
+
+def test_unmatched_film_records_a_miss(library_db: Engine) -> None:
+    stats = enrich_films(library_db, FakeTmdb({}))
+
+    assert stats.matched == 0
+    assert stats.already_enriched == 0
+    assert stats.not_matched == 0
+    assert stats.unmatched == ["Fixture Film A (1999)", "Fixture Film B (2001)"]
+    with Session(library_db) as db:
+        assert {(miss.source_id, miss.provider) for miss in db.scalars(select(ItemMiss))} == {
+            ("https://boxd.it/aaa", "tmdb"),
+            ("https://boxd.it/bbb", "tmdb"),
+        }
+
+
+def test_batch_logs_a_recorded_miss_at_debug(
+    library_db: Engine, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG, logger="arthouse.enrich_films")
+
+    enrich_films(library_db, FakeTmdb({}))
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert len([message for message in messages if message.endswith("recorded miss")]) == 2
+
+
+def test_batch_does_not_retry_films_that_missed(library_db: Engine) -> None:
+    fake = FakeTmdb({})
+
+    first = enrich_films(library_db, fake)
+    assert first.not_matched == 0
+    assert len(fake.search_calls) == 2
+
+    second = enrich_films(library_db, fake)
+    assert second.matched == 0
+    assert second.already_enriched == 0
+    assert second.not_matched == 2
+    assert second.unmatched == []
+    # No new requests: a recorded miss is a finished attempt.
+    assert len(fake.search_calls) == 2
+
+
+def test_deleting_a_miss_queues_the_film_again(library_db: Engine) -> None:
+    fake = FakeTmdb({})
+    enrich_films(library_db, fake)
+    with Session(library_db) as db:
+        miss = db.get(ItemMiss, ("letterboxd", "https://boxd.it/aaa", "tmdb"))
+        assert miss is not None
+        db.delete(miss)
+        db.commit()
+
+    enrich_films(library_db, fake)
+
+    assert fake.search_calls[-1] == "Fixture Film A"
+
+
+def test_client_logs_the_request_and_a_retry(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def no_sleep(_seconds: float) -> None:
+        pass
+
+    monkeypatch.setattr("arthouse.enrich_films.time.sleep", no_sleep)
+    responses = iter(
+        [
+            httpx.Response(503, headers={"Retry-After": "7"}, text="busy"),
+            httpx.Response(200, json={"results": []}),
+        ]
+    )
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return next(responses)
+
+    caplog.set_level(logging.DEBUG, logger="arthouse.enrich_films")
+    with TmdbClient("key", transport=httpx.MockTransport(handler)) as client:
+        assert client.search_movie("Parasite", 2019) == []
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert messages[0] == "GET /search/movie {'query': 'Parasite', 'year': 2019}"
+    assert any(
+        "HTTP 503 from /search/movie (attempt 1/3), retrying in 7.0s" in message
+        for message in messages
+    )
+
+
+def test_client_logs_a_hard_failure_with_body_and_headers(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, headers={"x-test": "1"}, text="invalid api key")
+
+    caplog.set_level(logging.WARNING, logger="arthouse.enrich_films")
+    with (
+        TmdbClient("key", transport=httpx.MockTransport(handler)) as client,
+        pytest.raises(httpx.HTTPStatusError),
+    ):
+        client.search_movie("Parasite", None)
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("HTTP 401 from /search/movie: invalid api key" in message for message in messages)
+    assert any("x-test=1" in message for message in messages)
 
 
 def test_directors_are_backfilled_for_older_rows(library_db: Engine) -> None:

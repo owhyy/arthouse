@@ -6,11 +6,18 @@ that would otherwise drown the useful lines are pinned in one place here.
 
 import logging
 
+import httpx
+
 from arthouse.config import get_settings
 
 # httpx logs one line per request at INFO and the whole wire at DEBUG; our
 # client already reports the path, params, status and retry itself.
 NOISY_LOGGERS = ("httpx", "httpcore")
+
+
+def response_headers(response: httpx.Response) -> str:
+    """The response headers on one line, so a failure can be diagnosed later."""
+    return "; ".join(f"{key}={value}" for key, value in sorted(response.headers.items()))
 
 
 def configure_logging() -> None:

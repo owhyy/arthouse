@@ -78,10 +78,53 @@ keywords for is not refetched every run. TV entries from the Letterboxd export
 
 The enrichment schema is shared by every medium: `item_meta` stores
 provider-neutral fields (`provider`, `external_id`, `summary`, `image_path`,
-`credit`, `tags_fetched`), `item_genre` stores display genres (with
+`credit`, `tags_fetched`), `item_miss` records lookups that found no match so
+they are not retried on every run, `item_genre` stores display genres (with
 `artist_level` marking the MusicBrainz artist fallback), `item_tag` stores raw
 descriptor labels from any provider, and `item_descriptor` holds the
 descriptors those labels map onto.
+
+### Music enrichment (MusicBrainz)
+
+Albums are enriched with MusicBrainz metadata — artist credit, curated genres,
+and community tags. MusicBrainz requires a contact-bearing `User-Agent` and
+allows one request per second; `ARTHOUSE_MUSICBRAINZ_USER_AGENT` overrides the
+default, and the client throttles itself:
+
+```bash
+uv run python -m arthouse.enrich_music            # all not-yet-enriched albums
+uv run python -m arthouse.enrich_music --limit 5  # small batch
+```
+
+A transient failure (429/5xx) widens that throttle by one second, up to five,
+and every success eases it back towards one. Server retry hints are logged but
+not acted on: a busy 503 answers with `Retry-After: 0`, and the `x-ratelimit-*`
+headers describe a global per-second bucket shared with every other caller, so
+the throttle alone decides the wait. Four attempts are made before the album is
+given up on.
+
+Matching is stricter than TMDB's: the normalized title must match exactly, so a
+release MusicBrainz files under another title is reported as unmatched rather
+than guessed. Year only breaks ties between hits — a reissue legitimately
+carries a later date — and an album beats a same-name single. Genres come from
+the album's curated genres; when it has none, the artist's genres are used and
+the rows are flagged `artist_level` in `item_genre`. Community tags are the
+descriptor source; artist tags are never borrowed, because a tag names one
+album's mood. A matched album is never re-fetched, so a record that had no
+genres when it was enriched stays that way until it is cleared and re-run. An
+album that does not match is recorded in `item_miss`, so a later run skips it
+instead of searching the same query again; delete its row to retry.
+
+The batch logs one line per album to stderr — `fetching [12/272] Grace — Jeff
+Buckley (1994)` — so stdout keeps only the summary and the unmatched list. The
+summary separates what this run matched from what an earlier run had already
+enriched and what an earlier run had already tried without a match.
+`ARTHOUSE_DEBUG=1` raises the level to DEBUG, which adds the exact search query,
+the titles and dates it returned, every throttle and retry with its status and
+wait, and the body and headers of a hard failure. `httpx` and `httpcore` are
+pinned to `WARNING` in `arthouse/logs.py`, so their duplicate request line and
+byte-level trace never drown those entries. At one request per second, roughly
+two calls per album, a full pass takes about ten minutes.
 
 ### Descriptor vocabulary
 
@@ -195,6 +238,7 @@ uv run pytest
 src/arthouse/
 main.py          # app factory: builds library.db, asset map, server entry point
 config.py        # pydantic-settings; paths anchored to the project root
+logs.py          # one logging policy for the server and every CLI entry point
 deps.py          # Jinja2Templates singleton, SQLAlchemy session dependency
 assets.py        # content-hashed asset URLs (`asset()` template global)
 library.py       # ORM model, platform CSV parsers, SQLite build/queries
@@ -217,6 +261,6 @@ Environment variables use the `ARTHOUSE_` prefix, or a `.env` at the project roo
 |---|---|---|
 | `ARTHOUSE_HOST` | `127.0.0.1` | Bind address for `uv run arthouse` |
 | `ARTHOUSE_PORT` | `8000` | Bind port for `uv run arthouse` |
-| `ARTHOUSE_DEBUG` | `false` | Enables reload; re-hashes assets per render; echoes SQL to stderr |
+| `ARTHOUSE_DEBUG` | `false` | Enables reload; re-hashes assets per render; echoes SQL to stderr; raises CLI logging to DEBUG |
 | `ARTHOUSE_DATA_DIR` | `<project>/data` | Exports directory; `library.db` is built here |
 | `ARTHOUSE_TMDB_API_KEY` | unset | TMDB v3 key (or v4 read token) for film genre enrichment |

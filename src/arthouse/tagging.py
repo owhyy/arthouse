@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
 from arthouse.library import Base, Item, ItemDescriptor, ItemTag
+from arthouse.logs import configure_logging
 from arthouse.vocab import FACETS, Facet, lookup
 
 
@@ -104,6 +105,7 @@ def rebuild_descriptors(engine: Engine) -> TaggingStats:
 
 
 def main() -> None:
+    configure_logging()
     parser = argparse.ArgumentParser(
         description="Map raw provider tags onto the descriptor vocabulary."
     )

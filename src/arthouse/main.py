@@ -12,6 +12,7 @@ from arthouse.assets import asset_url, build_asset_map
 from arthouse.config import BASE_DIR, Settings, get_settings
 from arthouse.deps import templates
 from arthouse.library import build_db
+from arthouse.logs import configure_logging
 from arthouse.routes import pages
 from arthouse.tagging import rebuild_descriptors
 
@@ -71,6 +72,7 @@ app = create_app()
 def run() -> None:
     import uvicorn
 
+    configure_logging()
     settings = get_settings()
     uvicorn.run(
         "arthouse.main:app",

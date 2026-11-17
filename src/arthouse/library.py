@@ -113,6 +113,23 @@ class ItemMeta(Base):
         return PROVIDER_LABELS.get(self.provider, self.provider)
 
 
+class ItemMiss(Base):
+    """A provider lookup that found no match.
+
+    Matching is strict, so a miss is a real answer and not something a rerun
+    would fix. Recording it keeps the item out of the pending queue instead of
+    spending requests on it every run; delete the row to try it again.
+    When we implement other API sources for our metadata, these items should be refetched.
+    """
+
+    __tablename__: str = "item_miss"
+
+    source: Mapped[str] = mapped_column(primary_key=True)
+    source_id: Mapped[str] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(primary_key=True)
+    attempted_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+
+
 class ItemGenre(Base):
     """One display genre for an item.
 
@@ -292,7 +309,7 @@ def drop_legacy_enrichment(engine: Engine) -> None:
         for table in legacy:
             if inspector.has_table(table):
                 conn.execute(text(f"DROP TABLE {table}"))
-        for table in ("item_meta", "item_tag", "item_genre"):
+        for table in ("item_meta", "item_tag", "item_genre", "item_miss"):
             if inspector.has_table(table):
                 conn.execute(text(f"DELETE FROM {table}"))
 

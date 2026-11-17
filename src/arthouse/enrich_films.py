@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
 from arthouse.library import Item, ItemGenre, ItemMeta, ItemTag, normalize_title
+from arthouse.logs import configure_logging
 from arthouse.tagging import rebuild_descriptors
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
@@ -358,6 +359,7 @@ def keyword_report(engine: Engine, top: int = 25) -> KeywordReport:
 
 
 def main() -> None:
+    configure_logging()
     parser = argparse.ArgumentParser(
         description="Enrich films with TMDB description, genres, director, and keywords."
     )

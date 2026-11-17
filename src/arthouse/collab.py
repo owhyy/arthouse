@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from arthouse.config import BASE_DIR, get_settings
 from arthouse.library import Item, ItemMeta, normalize_title
+from arthouse.logs import configure_logging
 
 DEFAULT_RATINGS = BASE_DIR / "datasets" / "ratings_small.csv"
 DEFAULT_LINKS = BASE_DIR / "datasets" / "links.csv"
@@ -211,6 +212,7 @@ def _label(title: str, year: int | None) -> str:
 
 
 def main() -> None:
+    configure_logging()
     parser = argparse.ArgumentParser(
         description="MovieLens collaborative-filtering baseline (library-internal neighbours)."
     )

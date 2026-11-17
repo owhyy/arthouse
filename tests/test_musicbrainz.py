@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
@@ -99,10 +100,30 @@ def test_client_retries_a_503_then_succeeds() -> None:
         assert client.request("/release-group") == {"ok": True}
 
     assert calls == 2
-    assert clock.sleeps == [1.0]
+    # The failure widens the throttle to 2s, which is also the retry wait.
+    assert clock.sleeps == [2.0]
 
 
-def test_client_honours_retry_after() -> None:
+def test_client_ignores_a_retry_after_hint() -> None:
+    clock = FakeClock()
+    calls = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        # Even a hint that would have mattered is not acted on: the throttle
+        # is the only retry policy, because MusicBrainz sends a zero for its
+        # busy 503 and its rate-limit headers describe a global bucket.
+        return httpx.Response(503, headers={"Retry-After": "30"}, text="busy")
+
+    with _client(handler, clock) as client, pytest.raises(httpx.HTTPStatusError):
+        client.request("/release-group")
+
+    assert calls == 4
+    assert clock.sleeps == [2.0, 3.0, 4.0]
+
+
+def test_client_recovers_the_throttle_after_a_success() -> None:
     clock = FakeClock()
     calls = 0
 
@@ -110,13 +131,15 @@ def test_client_honours_retry_after() -> None:
         nonlocal calls
         calls += 1
         if calls == 1:
-            return httpx.Response(503, headers={"Retry-After": "2"}, text="busy")
-        return httpx.Response(200, json={"ok": True})
+            return httpx.Response(503, text="busy")
+        return httpx.Response(200, json={})
 
     with _client(handler, clock) as client:
-        assert client.request("/release-group") == {"ok": True}
+        client.request("/release-group")  # 503, retried, then a 200
+        client.request("/release-group")  # back to the base interval
 
-    assert clock.sleeps == [2.0]
+    # 2s for the retry, then the recovered 1s throttle for the next request.
+    assert clock.sleeps == [2.0, 1.0]
 
 
 def test_client_does_not_retry_a_400() -> None:
@@ -146,7 +169,7 @@ def test_client_gives_up_after_four_attempts() -> None:
         client.request("/release-group")
 
     assert calls == 4
-    assert clock.sleeps == [1.0, 2.0, 4.0]
+    assert clock.sleeps == [2.0, 3.0, 4.0]
 
 
 def test_search_release_groups_sends_a_title_and_artist_query() -> None:
@@ -242,6 +265,66 @@ def test_search_tolerates_an_empty_payload() -> None:
 
     with _client(handler) as client:
         assert client.search_release_groups("Nothing") == []
+
+
+def test_search_logs_the_query_verbatim(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="arthouse.musicbrainz")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={})
+
+    with _client(handler) as client:
+        client.search_release_groups("Either / Or", "Elliott Smith")
+
+    messages = [record.getMessage() for record in caplog.records]
+    text = "\n".join(messages)
+    # The untransformed query is what explains a miss: a slash must not be
+    # quietly rewritten into something the search engine cannot match.
+    assert 'releasegroup:"Either / Or" AND artist:"Elliott Smith"' in text
+    assert "-> 0 hits: []" in text
+
+
+def test_client_logs_a_retry_with_its_status_wait_and_headers(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG, logger="arthouse.musicbrainz")
+    clock = FakeClock()
+    calls = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(429, headers={"Retry-After": "2"}, text="slow down")
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(handler, clock) as client:
+        assert client.request("/release-group") == {"ok": True}
+
+    text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "HTTP 429 from /release-group (attempt 1/4), retrying in 2.0s" in text
+    assert "retry-after=2" in text
+
+
+def test_client_logs_the_body_and_headers_of_a_hard_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG, logger="arthouse.musicbrainz")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            headers={"X-RateLimit-Remaining": "13"},
+            text="bad release-group query",
+        )
+
+    with _client(handler) as client, pytest.raises(httpx.HTTPStatusError):
+        client.request("/release-group")
+
+    text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "HTTP 400 from /release-group: bad release-group query" in text
+    # The headers are the only way to tell a retry hint from a hard refusal.
+    assert "x-ratelimit-remaining=13" in text
 
 
 def _hit(

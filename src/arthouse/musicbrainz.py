@@ -6,6 +6,7 @@ that turns search hits into one release group; the batch itself lands later.
 """
 
 import html
+import logging
 import re
 import time
 from collections.abc import Callable
@@ -19,9 +20,12 @@ from arthouse.library import normalize_title
 
 MUSICBRAINZ_BASE_URL = "https://musicbrainz.org/ws/2/"
 MAX_ATTEMPTS = 4
-RETRY_BACKOFF = 1.0  # seconds; doubled per attempt when no Retry-After is sent
 REQUEST_INTERVAL = 1.0  # MusicBrainz's documented rate limit
+THROTTLE_STEP = 1.0  # each transient failure slows the next request by this much
+THROTTLE_MAX = 5.0  # ceiling, so a bad patch cannot stall a whole run
 SEARCH_LIMIT = 5  # candidates per search; enough to disambiguate by year
+
+log = logging.getLogger(__name__)
 
 
 # These types describe the slice of the payload the enrichment pass relies on,
@@ -185,6 +189,11 @@ class MusicClient(ReleaseGroupSearcher, Protocol):
     def artist(self, mbid: str) -> Artist: ...
 
 
+def _headers(response: httpx.Response) -> str:
+    """The response headers on one line, so a failure can be diagnosed later."""
+    return "; ".join(f"{key}={value}" for key, value in sorted(response.headers.items()))
+
+
 class MusicBrainzClient:
     """Thin MusicBrainz WS/2 client with a 1 req/s throttle and retries."""
 
@@ -209,6 +218,7 @@ class MusicBrainzClient:
             transport=transport,
         )
         self._interval: float = interval
+        self._base_interval: float = interval
         self._clock: Callable[[], float] = clock
         self._sleep: Callable[[float], None] = sleep
         self._last_request: float | None = None
@@ -230,30 +240,57 @@ class MusicBrainzClient:
         if self._last_request is not None:
             delay = self._interval - (now - self._last_request)
             if delay > 0:
+                log.debug("throttle: sleeping %.2fs", delay)
                 self._sleep(delay)
                 now = self._clock()
         self._last_request = now
+
+    def _slow_down(self) -> None:
+        """Widen the interval after a transient failure, up to the cap."""
+        self._interval = min(self._interval + THROTTLE_STEP, THROTTLE_MAX)
+        log.debug("throttle: raised to %.1fs", self._interval)
+
+    def _speed_up(self) -> None:
+        """Ease the interval back towards the base after a response that worked."""
+        self._interval = max(self._base_interval, self._interval - THROTTLE_STEP)
 
     def _get(self, path: str, params: dict[str, str | int] | None = None) -> object:
         """GET with throttling and retries, so one 429/5xx does not abort a batch."""
         for attempt in range(MAX_ATTEMPTS):
             self._throttle()
+            log.debug("GET %s %s", path, params or {})
             response = self._client.get(path.lstrip("/"), params=params)
             transient = response.status_code == 429 or response.status_code >= 500
             if transient and attempt < MAX_ATTEMPTS - 1:
-                # httpx types Headers.get as Any (it forwards an untyped default).
-                retry_after = cast(str | None, response.headers.get("Retry-After"))
-                wait: float
-                try:
-                    wait = (
-                        float(retry_after)
-                        if retry_after is not None
-                        else RETRY_BACKOFF * 2.0**attempt
-                    )
-                except ValueError:
-                    wait = RETRY_BACKOFF * 2.0**attempt
-                self._sleep(wait)
+                # The throttle is the whole retry policy: MusicBrainz answers a
+                # busy 503 with `Retry-After: 0`, and its rate-limit headers
+                # describe a global per-second bucket, so neither says how long
+                # to wait. They are logged for diagnosis only.
+                self._slow_down()
+                log.debug(
+                    "HTTP %d from %s (attempt %d/%d), retrying in %.1fs: %s",
+                    response.status_code,
+                    path,
+                    attempt + 1,
+                    MAX_ATTEMPTS,
+                    self._interval,
+                    _headers(response),
+                )
+                self._sleep(self._interval)
                 continue
+            if response.is_error:
+                # The status alone is in the exception; the body says whether
+                # the query was rejected or the service is unwell, and the
+                # headers record what the server offered.
+                log.warning(
+                    "HTTP %d from %s: %s\n%s",
+                    response.status_code,
+                    path,
+                    response.text[:200],
+                    _headers(response),
+                )
+            else:
+                self._speed_up()
             response.raise_for_status()
             return cast(object, response.json())
         raise AssertionError("unreachable: the last attempt either returns or raises")
@@ -271,9 +308,18 @@ class MusicBrainzClient:
         clauses = [f'releasegroup:"{_quoted(title)}"']
         if artist:
             clauses.append(f'artist:"{_quoted(artist)}"')
-        params: dict[str, str | int] = {"query": " AND ".join(clauses), "limit": limit}
+        query = " AND ".join(clauses)
+        params: dict[str, str | int] = {"query": query, "limit": limit}
+        log.debug("search %r", query)
         payload = cast(ReleaseGroupSearch, self._get("/release-group", params))
-        return payload.get("release-groups", [])
+        hits = payload.get("release-groups", [])
+        log.debug(
+            "search %r -> %d hits: %s",
+            query,
+            len(hits),
+            [(hit.get("title"), hit.get("first-release-date")) for hit in hits],
+        )
+        return hits
 
     def release_group(self, mbid: str) -> ReleaseGroup:
         """One release group with its curated genres and community tags.

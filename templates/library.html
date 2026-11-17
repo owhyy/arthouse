@@ -20,8 +20,8 @@
     <input type="search"
            name="q"
            value="{{ q }}"
-           placeholder="Search titles in this tab"
-           aria-label="Search titles"
+           placeholder="Search titles, authors, and artists"
+           aria-label="Search titles and names"
            hx-get="{{ url_for('library') }}"
            hx-trigger="input changed delay:300ms"
            hx-target="#library-region"
@@ -187,7 +187,7 @@
       {% endif %}
     {% elif q or descriptor %}
       <p class="mt-4 text-sm text-muted">
-        No titles match
+        No titles or names match
         {% if q %}“{{ q }}”{% endif %}
         {% if q and descriptor %}with{% endif %}
         {% if descriptor %}descriptor “{{ descriptor }}”{% endif %}.

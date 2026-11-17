@@ -21,7 +21,8 @@ card grid with one tab per category (Music / Films / Books). Every tab sorts
 newest review first; when review dates tie, or when an item has no review date
 (Music exports contain none), enriched items come first, then rating and title.
 Tabs swap the grid in place via htmx (plain links without JS). A
-search box filters the active tab by item title as you type (300 ms debounce;
+search box filters the active tab by title, author/artist, or enriched credit
+(the film director) as you type (300 ms debounce;
 the form also works as a plain GET). Every entry links to a detail page with the rating date, the original platform
 rating, the platform it came from, and your review when the export has one
 (Letterboxd `reviews.csv`, RYM `Review`, Goodreads `My Review`; HTML is
@@ -40,7 +41,7 @@ A facet-grouped descriptor filter narrows **any** tab (`?descriptor=…`);
 descriptor chips on detail pages link to the same filtered view. Facets are
 `mood`, `tone`, `atmosphere`, `setting`, `theme`, `style` and `creator`.
 The filter accepts an alias as well (`melancholy` filters on `melancholic`).
-While a title search or descriptor filter is active, the active tab's count
+While a search or descriptor filter is active, the active tab's count
 shows the number of matching items; the other tabs keep their library totals.
 The grid shows 60 items per page and pagination keeps the active search and
 descriptor filter.

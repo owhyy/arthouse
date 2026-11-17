@@ -7,7 +7,7 @@ query it needs without dragging in the CSV parsers (and vice versa).
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sqlalchemy import Select, and_, exists, func, select
+from sqlalchemy import Select, and_, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from arthouse.models import GenreRow, Item, ItemDescriptor, ItemGenre, ItemMeta
@@ -21,7 +21,23 @@ def _items_query(
 ) -> Select[Item]:
     stmt = select(Item)
     if search:
-        stmt = stmt.where(Item.title.ilike(f"%{search}%"))
+        # The card shows a name as well as a title, so search both: `creator` is
+        # the exported author/artist, and the enriched credit covers films,
+        # whose Letterboxd export carries no creator (the director is in TMDB).
+        pattern = f"%{search}%"
+        stmt = stmt.where(
+            or_(
+                Item.title.ilike(pattern),
+                Item.creator.ilike(pattern),
+                exists(
+                    select(1).where(
+                        ItemMeta.source == Item.source,
+                        ItemMeta.source_id == Item.source_id,
+                        ItemMeta.credit.ilike(pattern),
+                    )
+                ),
+            )
+        )
     if descriptor:
         stmt = stmt.join(
             ItemDescriptor,

@@ -215,6 +215,7 @@ def test_count_items_matches_the_filters(library_db: Engine) -> None:
     with Session(library_db) as db:
         assert count_items(db, media_type="film") == 2
         assert count_items(db, media_type="film", search="film a") == 1
+        assert count_items(db, media_type="book", search="fixture author") == 1
         assert count_items(db, media_type="film", descriptor="dark") == 1
         assert count_items(db, media_type="film", search="film a", descriptor="dark") == 1
         assert count_items(db, media_type="film", descriptor="unknown") == 0
@@ -822,7 +823,7 @@ async def test_search_filters_titles_in_the_active_tab(
     assert "Fixture Film A" in films.text
     assert "Fixture Film B" not in films.text
     assert re.search(r"Films\s*<span[^>]*>1</span>", films.text)
-    assert "No titles match" in music.text  # search does not cross tabs
+    assert "No titles or names match" in music.text  # search does not cross tabs
 
 
 async def test_search_is_case_insensitive(
@@ -837,18 +838,54 @@ async def test_search_is_case_insensitive(
     assert "Fixture Film A" not in response.text
 
 
-async def test_search_matches_titles_only(
+async def test_search_matches_a_book_author(
     client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
 ) -> None:
     _override_db(test_app, library_db)
     try:
-        # "Fixture Artist" is a creator, not a title; review text is ignored too.
-        creators = await client.get("/library", params={"tab": "music", "q": "fixture artist"})
-        reviews = await client.get("/library", params={"tab": "book", "q": "markup"})
+        response = await client.get("/library", params={"tab": "book", "q": "fixture author"})
     finally:
         _clear_override(test_app)
-    assert "No titles match" in creators.text
-    assert "No titles match" in reviews.text
+    assert "Fixture Book A" in response.text
+    assert "Fixture Book B" not in response.text
+
+
+async def test_search_matches_a_music_artist(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    _override_db(test_app, library_db)
+    try:
+        response = await client.get("/library", params={"tab": "music", "q": "fixture artist two"})
+    finally:
+        _clear_override(test_app)
+    assert "Fixture Best Album" in response.text
+    assert "Fixture Album" not in response.text
+
+
+async def test_search_matches_an_enriched_film_director(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    # Letterboxd exports carry no creator, so the director only exists in the
+    # enriched credit — searching it must still find the film.
+    _enrich_film(library_db, "https://boxd.it/aaa", "A.", ["Drama"])
+    _override_db(test_app, library_db)
+    try:
+        response = await client.get("/library", params={"tab": "film", "q": "fixture director"})
+    finally:
+        _clear_override(test_app)
+    assert "Fixture Film A" in response.text
+    assert "Fixture Film B" not in response.text
+
+
+async def test_search_still_ignores_reviews(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    _override_db(test_app, library_db)
+    try:
+        response = await client.get("/library", params={"tab": "book", "q": "markup"})
+    finally:
+        _clear_override(test_app)
+    assert "No titles or names match" in response.text
 
 
 async def test_search_keeps_query_in_tab_links(

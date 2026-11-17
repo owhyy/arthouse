@@ -1,6 +1,7 @@
 import csv
 import re
 from collections.abc import Iterator
+from datetime import date
 from pathlib import Path
 from typing import cast
 
@@ -157,10 +158,40 @@ def test_unrated_and_wishlist_items_are_skipped(library_db: Engine) -> None:
     assert "Fixture Book C" not in titles  # to-read shelf, never consumed
 
 
-def test_query_sorts_by_rating_desc(library_db: Engine) -> None:
+def test_query_sorts_newest_reviewed_and_puts_undated_last(library_db: Engine) -> None:
     with Session(library_db) as db:
-        ratings = [i.rating for i in query_items(db)]
-    assert ratings == sorted(ratings, reverse=True)
+        titles = [item.title for item in query_items(db)]
+    assert titles == [
+        "Fixture Film B",  # 2026-02-11
+        "Fixture Film A",  # 2026-02-10
+        "Fixture Book A",  # 2026-01-02
+        "Fixture Best Album",  # undated, rating 5
+        "Fixture Album",  # undated, rating 4
+    ]
+
+
+def test_query_prioritises_enriched_albums_when_undated(library_db: Engine) -> None:
+    # The lower-rated album is enriched, so it leads despite the rating order.
+    _add_music_genres(library_db, [("rock", 5)])
+    with Session(library_db) as db:
+        titles = [item.title for item in query_items(db, media_type="music")]
+    assert titles == ["Fixture Album", "Fixture Best Album"]
+
+
+def test_query_prioritises_enriched_films_on_the_same_review_date(
+    library_db: Engine,
+) -> None:
+    # Give both films the same review date so enrichment decides the tie.
+    with Session(library_db) as db:
+        film = next(
+            item for item in query_items(db, media_type="film") if item.title == "Fixture Film B"
+        )
+        film.rated_on = date(2026, 2, 10)
+        db.commit()
+    _enrich_film(library_db, "https://boxd.it/bbb", "B.", ["Drama"])
+    with Session(library_db) as db:
+        titles = [item.title for item in query_items(db, media_type="film")]
+    assert titles == ["Fixture Film B", "Fixture Film A"]
 
 
 def test_query_filters_by_media_type(library_db: Engine) -> None:

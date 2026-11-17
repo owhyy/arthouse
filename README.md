@@ -17,8 +17,10 @@ uv run arthouse            # http://127.0.0.1:8000
 ## Library data
 
 `/library` renders your RateYourMusic, Letterboxd, and Goodreads exports as a
-card grid with one tab per category (Music / Films / Books, each sorted by
-rating); tabs swap the grid in place via htmx (plain links without JS). A
+card grid with one tab per category (Music / Films / Books). Every tab sorts
+newest review first; when review dates tie, or when an item has no review date
+(Music exports contain none), enriched items come first, then rating and title.
+Tabs swap the grid in place via htmx (plain links without JS). A
 search box filters the active tab by item title as you type (300 ms debounce;
 the form also works as a plain GET). Every entry links to a detail page with the rating date, the original platform
 rating, the platform it came from, and your review when the export has one

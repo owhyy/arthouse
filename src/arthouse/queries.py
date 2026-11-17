@@ -7,7 +7,7 @@ query it needs without dragging in the CSV parsers (and vice versa).
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sqlalchemy import Select, and_, func, select
+from sqlalchemy import Select, and_, exists, func, select
 from sqlalchemy.orm import Session
 
 from arthouse.models import GenreRow, Item, ItemDescriptor, ItemGenre, ItemMeta
@@ -44,13 +44,21 @@ def query_items(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[Item]:
-    """Rated items, newest rating first; `search` matches the title only.
+    """Rated items, newest review first, enriched before unenriched.
 
+    Review dates come from the platform exports; Music has none, so undated
+    items sort after every dated item and only then by enrichment and rating.
     The grid passes `limit`/`offset` so SQLite sorts and slices the page;
     `count_items` supplies the total the pager shows.
     """
+    enriched = exists(
+        select(1).where(and_(ItemMeta.source == Item.source, ItemMeta.source_id == Item.source_id))
+    )
     stmt = _items_query(media_type, search, descriptor).order_by(
-        Item.rating.desc(), Item.title.collate("nocase")
+        Item.rated_on.desc().nullslast(),
+        enriched.desc(),
+        Item.rating.desc(),
+        Item.title.collate("nocase"),
     )
     if offset:
         stmt = stmt.offset(offset)

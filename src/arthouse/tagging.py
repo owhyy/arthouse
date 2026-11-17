@@ -17,8 +17,9 @@ from sqlalchemy import Engine, and_, select, text
 from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
-from arthouse.library import Base, Item, ItemDescriptor, ItemTag, create_db_engine
+from arthouse.db import create_db_engine, create_schema
 from arthouse.logs import configure_logging
+from arthouse.models import Base, Item, ItemDescriptor, ItemTag
 from arthouse.vocab import FACETS, Facet, lookup
 
 
@@ -45,7 +46,7 @@ def rebuild_descriptors(engine: Engine) -> TaggingStats:
     Base.metadata.tables["item_descriptor"].drop(engine, checkfirst=True)
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS descriptor"))
-    Base.metadata.create_all(engine)
+    create_schema(engine)
 
     pairs: set[tuple[str, str, str]] = set()
     owners: set[tuple[str, str]] = set()

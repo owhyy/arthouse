@@ -3,11 +3,9 @@
 from fastapi import APIRouter, HTTPException, Request
 
 from arthouse.deps import DbSession, templates
-from arthouse.library import (
-    MEDIA_LABELS,
-    MEDIA_ORDER,
-    GenreRow,
-    ItemMeta,
+from arthouse.library import MEDIA_LABELS, MEDIA_ORDER, split_genres
+from arthouse.models import GenreRow, ItemMeta
+from arthouse.queries import (
     count_items,
     count_items_by_media,
     query_descriptor_options,
@@ -17,7 +15,6 @@ from arthouse.library import (
     query_item_genres,
     query_item_meta,
     query_items,
-    split_genres,
 )
 from arthouse.vocab import lookup
 

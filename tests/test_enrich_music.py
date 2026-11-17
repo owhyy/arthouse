@@ -13,19 +13,10 @@ from arthouse.enrich_music import (
     enrich_music,
     enrich_music_item,
 )
-from arthouse.library import (
-    GenreRow,
-    Item,
-    ItemGenre,
-    ItemMeta,
-    ItemMiss,
-    ItemTag,
-    build_db,
-    query_item_genres,
-    query_item_meta,
-    query_items,
-)
+from arthouse.library import build_db
+from arthouse.models import GenreRow, Item, ItemGenre, ItemMeta, ItemMiss, ItemTag
 from arthouse.musicbrainz import Artist, Genre, ReleaseGroup, Tag
+from arthouse.queries import query_item_genres, query_item_meta, query_items
 
 
 class FakeMusicBrainz:

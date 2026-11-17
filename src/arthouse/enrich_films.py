@@ -17,15 +17,10 @@ from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
 from arthouse.config import get_settings
-from arthouse.library import (
-    Item,
-    ItemGenre,
-    ItemMeta,
-    ItemTag,
-    create_db_engine,
-    normalize_title,
-)
+from arthouse.db import create_db_engine
+from arthouse.library import normalize_title
 from arthouse.logs import configure_logging
+from arthouse.models import Item, ItemGenre, ItemMeta, ItemTag
 from arthouse.tagging import rebuild_descriptors
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"

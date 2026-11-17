@@ -9,8 +9,9 @@ from fastapi.staticfiles import StaticFiles
 
 from arthouse.assets import asset_url, build_asset_map
 from arthouse.config import BASE_DIR, Settings, get_settings
+from arthouse.db import create_db_engine
 from arthouse.deps import templates
-from arthouse.library import build_db, create_db_engine
+from arthouse.library import build_db
 from arthouse.logs import configure_logging
 from arthouse.routes import pages
 from arthouse.tagging import rebuild_descriptors

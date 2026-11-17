@@ -19,8 +19,10 @@ from sqlalchemy import Engine, and_, select
 from sqlalchemy.orm import Session
 
 from arthouse.config import BASE_DIR, get_settings
-from arthouse.library import Item, ItemMeta, create_db_engine, normalize_title
+from arthouse.db import create_db_engine
+from arthouse.library import normalize_title
 from arthouse.logs import configure_logging
+from arthouse.models import Item, ItemMeta
 
 DEFAULT_RATINGS = BASE_DIR / "datasets" / "ratings_small.csv"
 DEFAULT_LINKS = BASE_DIR / "datasets" / "links.csv"

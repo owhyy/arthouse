@@ -181,12 +181,10 @@ the worklist: add an alias, re-run, coverage goes up. Current snapshot: 1,776 of
 across 272 items, and 234 of 294 films get at least three descriptors.
 
 `item_descriptor` stores only `(source, source_id, name)`; the facet lives in the
-vocabulary, so there is no second copy to drift. The old `descriptor` facet cache
-and the v1 `film_genre`/`film_keyword` tables are dropped at startup — all of it
-is regenerable, so re-run the enrichment command instead of migrating it. The
-same goes for a schema change: `create_all` never alters an existing table, so
-delete `data/library.db`, let the app rebuild it from the exports, and re-run
-the enrichment passes.
+vocabulary, so there is no second copy to drift. Derived tables are regenerable,
+so a schema change is handled by rebuilding rather than migrating: `create_all`
+never alters an existing table, so delete `data/library.db`, let the app rebuild
+it from the exports, and re-run the enrichment passes.
 
 ### Collaborative similarity (MovieLens)
 
@@ -253,7 +251,10 @@ config.py        # pydantic-settings; paths anchored to the project root
 logs.py          # one logging policy for the server and every CLI entry point
 deps.py          # Jinja2Templates singleton, SQLAlchemy session dependency
 assets.py        # content-hashed asset URLs (`asset()` template global)
-library.py       # ORM model, platform CSV parsers, SQLite build/queries
+db.py            # SQLite engine/pragmas, schema and index creation
+models.py        # ORM models and shared value objects (Item, GenreRow, …)
+queries.py       # read queries: grid paging, detail joins, descriptor options
+library.py       # platform CSV parsers, normalization, build_db
 vocab.py         # closed cross-media descriptor vocabulary (7 facets, aliases)
 tagging.py       # maps raw provider tags onto the vocabulary; coverage report
 collab.py        # MovieLens adjusted-cosine item-item CF baseline

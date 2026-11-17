@@ -4,7 +4,8 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from arthouse.enrich_films import TmdbMovie, enrich_films, find_film, keyword_report, match_film
-from arthouse.library import ItemGenre, ItemMeta, ItemTag, build_db
+from arthouse.library import build_db
+from arthouse.models import ItemGenre, ItemMeta, ItemTag
 
 
 class FakeTmdb:

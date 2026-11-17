@@ -6,26 +6,20 @@ from typing import cast
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import Engine, create_engine, func, inspect, select, text
+from sqlalchemy import Engine, create_engine, inspect, text
 from sqlalchemy.orm import Session
 
+from arthouse.db import create_db_engine
 from arthouse.deps import get_db
-from arthouse.library import (
-    Base,
-    GenreRow,
-    ItemGenre,
-    ItemMeta,
-    ItemTag,
-    build_db,
+from arthouse.library import build_db, normalize_title, split_genres
+from arthouse.models import Base, GenreRow, ItemGenre, ItemMeta, ItemTag
+from arthouse.queries import (
     count_items,
     count_items_by_media,
-    create_db_engine,
-    normalize_title,
     query_item,
     query_item_credits,
     query_item_genres,
     query_items,
-    split_genres,
 )
 from arthouse.routes import pages
 from arthouse.tagging import rebuild_descriptors
@@ -536,39 +530,6 @@ async def test_unknown_item_404s(
     finally:
         _clear_override(test_app)
     assert response.status_code == 404
-
-
-def test_build_db_drops_legacy_enrichment(tmp_path: Path) -> None:
-    engine = create_engine(f"sqlite:///{tmp_path / 'library.db'}")
-    Base.metadata.create_all(engine)  # current item_meta/item_tag tables
-    with engine.begin() as conn:
-        for table in ("film_meta", "film_genre", "film_keyword"):
-            conn.execute(
-                text(
-                    f"CREATE TABLE {table} (source VARCHAR NOT NULL, "
-                    + "source_id VARCHAR NOT NULL, tag VARCHAR)"
-                )
-            )
-        conn.execute(
-            text("INSERT INTO film_genre VALUES ('letterboxd', 'https://boxd.it/old', 'Drama')")
-        )
-        conn.execute(
-            text(
-                "INSERT INTO item_tag VALUES "
-                + "('letterboxd', 'https://boxd.it/old', 'tmdb', 'old')"
-            )
-        )
-    build_db(engine, tmp_path / "nope")  # startup drops/reset the pre-refactor tables
-    inspector = inspect(engine)
-    assert not inspector.has_table("film_meta")
-    assert not inspector.has_table("film_genre")
-    assert not inspector.has_table("film_keyword")
-    with Session(engine) as db:
-        # Legacy rows are not migrated; enrichment must be re-run.
-        assert db.scalar(select(func.count()).select_from(ItemTag)) == 0
-        assert db.scalar(select(func.count()).select_from(ItemMeta)) == 0
-    build_db(engine, tmp_path / "nope")  # a second startup keeps the new tables
-    assert inspect(engine).has_table("item_meta")
 
 
 def test_genres_never_feed_the_vocabulary(library_db: Engine) -> None:

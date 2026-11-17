@@ -14,7 +14,8 @@ from arthouse.collab import (
     load_links,
     neighbors,
 )
-from arthouse.library import ItemMeta, query_items
+from arthouse.models import ItemMeta
+from arthouse.queries import query_items
 
 
 def _write_csv(path: Path, header: list[str], rows: list[list[str]]) -> Path:

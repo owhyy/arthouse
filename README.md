@@ -35,7 +35,9 @@ When an album has no genres of its own and the artist's are borrowed instead, th
 detail page notes that they may not be accurate.
 Films also show the TMDB synopsis and faceted descriptors (detail page only),
 and the director in the same credit line where books show the author and music
-the artist.
+the artist. An album whose artist uses another script leads with that name and
+keeps RYM's Latin form in parentheses (`Скриптонит (Skryptonite)`); the card
+stays one truncated line and carries the full credit in its tooltip.
 A facet-grouped descriptor filter narrows **any** tab (`?descriptor=…`);
 descriptor chips on detail pages link to the same filtered view. Facets are
 `mood`, `tone`, `atmosphere`, `setting`, `theme`, `style` and `creator`.

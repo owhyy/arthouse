@@ -56,6 +56,9 @@ class Item(Base):
     source_id: Mapped[str]
     title: Mapped[str]
     creator: Mapped[str]
+    # The artist's own-script name, kept when the export also carries a Latin
+    # form; the credit line shows both. Empty when the export has one spelling.
+    creator_original: Mapped[str] = mapped_column(default="")
     year: Mapped[int | None]
     rating: Mapped[float]  # normalized to 0-5
     rating_native: Mapped[str]
@@ -65,6 +68,19 @@ class Item(Base):
     @property
     def score(self) -> str:
         return score_str(self.rating)
+
+    @property
+    def creator_display(self) -> str:
+        """The credit line: the artist's own script first, the Latin form after.
+
+        The export stores a credit twice for artists who use another script, and
+        showing only the Latin transliteration would hide the name the artist
+        actually uses. Equal spellings and single-spelling exports render as
+        before, so films and books are unchanged.
+        """
+        if self.creator and self.creator_original and self.creator_original != self.creator:
+            return f"{self.creator_original} ({self.creator})"
+        return self.creator_original or self.creator
 
 
 class ItemMeta(Base):

@@ -150,6 +150,66 @@ def test_rym_html_entities_are_decoded(tmp_path: Path) -> None:
     assert albums['"Heroes"'] == "David Bowie"
 
 
+def test_rym_keeps_the_artists_own_script_name(tmp_path: Path) -> None:
+    """RYM stores the artist twice; both spellings are kept for the credit line."""
+    export = tmp_path / "rateyourmusic" / "export.csv"
+    export.parent.mkdir()
+    columns = (
+        "RYM Album",
+        "First Name",
+        "Last Name",
+        "First Name localized",
+        " Last Name localized",
+        "Title",
+        "Release_Date",
+        "Rating",
+        "Ownership",
+        "Purchase Date",
+        "Media Type",
+        " Review",
+        " Review Title",
+    )
+    rows = (
+        ("1", "", "Скриптонит", "", "Skryptonite", "2004", "2019", "6", "n", "", "", "", ""),
+        ("2", "The", "Knife", "", "", "Deep Cuts", "2006", "7", "n", "", "", "", ""),
+    )
+    with open(export, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(columns)
+        writer.writerows(rows)
+    engine = create_engine(f"sqlite:///{tmp_path / 'library.db'}")
+    build_db(engine, tmp_path)
+    with Session(engine) as db:
+        albums = {item.title: item for item in query_items(db, media_type="music")}
+    # The card keeps the Latin form; the original is kept beside it for display.
+    assert albums["2004"].creator == "Skryptonite"
+    assert albums["2004"].creator_original == "Скриптонит"
+    # One spelling means there is nothing extra to keep.
+    assert albums["Deep Cuts"].creator == "The Knife"
+    assert albums["Deep Cuts"].creator_original == ""
+
+
+def test_creator_display_puts_the_artists_own_script_first(library_db: Engine) -> None:
+    with Session(library_db) as db:
+        album = next(i for i in query_items(db, media_type="music") if i.title == "Fixture Album")
+        album.creator, album.creator_original = "Skryptonite", "Скриптонит"
+        db.commit()
+        assert album.creator_display == "Скриптонит (Skryptonite)"
+
+        # One spelling means one name; films and books are always in this case.
+        album.creator_original = "Skryptonite"
+        db.commit()
+        assert album.creator_display == "Skryptonite"
+
+        album.creator, album.creator_original = "", "Скриптонит"
+        db.commit()
+        assert album.creator_display == "Скриптонит"
+
+        album.creator, album.creator_original = "Skryptonite", ""
+        db.commit()
+        assert album.creator_display == "Skryptonite"
+
+
 def test_unrated_and_wishlist_items_are_skipped(library_db: Engine) -> None:
     with Session(library_db) as db:
         titles = {i.title for i in query_items(db)}
@@ -420,6 +480,55 @@ async def test_music_grid_ranks_genres_and_fades_the_overflow(
     assert "genre-strip" in response.text
     # The strip clips, so the title carries the full list in rank order.
     assert 'title="rock, folk rock, pop, beat music"' in response.text
+
+
+async def test_music_card_shows_the_artist_name_in_both_scripts(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    with Session(library_db) as db:
+        album = next(i for i in query_items(db, media_type="music") if i.title == "Fixture Album")
+        album.creator, album.creator_original = "Skryptonite", "Скриптонит"
+        db.commit()
+    _override_db(test_app, library_db)
+    try:
+        response = await client.get("/library?tab=music")
+    finally:
+        _clear_override(test_app)
+    assert response.status_code == 200
+    assert "Скриптонит (Skryptonite)" in response.text
+    # The card line truncates, so the tooltip carries the full credit and year.
+    assert 'title="Скриптонит (Skryptonite) · 2018"' in response.text
+
+
+async def test_album_detail_shows_the_artist_name_in_both_scripts(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    with Session(library_db) as db:
+        album = next(i for i in query_items(db, media_type="music") if i.title == "Fixture Album")
+        album.creator, album.creator_original = "Skryptonite", "Скриптонит"
+        db.commit()
+        item_id = album.id
+    _override_db(test_app, library_db)
+    try:
+        response = await client.get(f"/library/{item_id}")
+    finally:
+        _clear_override(test_app)
+    assert response.status_code == 200
+    assert "Скриптонит (Skryptonite)" in response.text
+
+
+async def test_film_card_keeps_a_single_director_credit(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    """Films have no second spelling, so no name may be wrapped in parentheses."""
+    _enrich_film(library_db, "https://boxd.it/aaa", "A fixture synopsis.", ["Drama"])
+    _override_db(test_app, library_db)
+    try:
+        response = await client.get("/library?tab=film")
+    finally:
+        _clear_override(test_app)
+    assert "Fixture Director" in response.text
+    assert "Fixture Director (" not in response.text
 
 
 def test_split_genres_keeps_the_voted_head_as_primary() -> None:

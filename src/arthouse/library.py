@@ -91,18 +91,29 @@ def _parse_letterboxd(path: Path) -> list[Item]:
     return items
 
 
+def _creator_name(first: str, last: str) -> str:
+    """Join the export's split name columns into the name a page shows."""
+    first, last = html.unescape(first).strip(), html.unescape(last).strip()
+    return f"{first} {last}" if first and last else (last or first)
+
+
 def _parse_rym(path: Path) -> list[Item]:
     items: list[Item] = []
     for row in _read_csv(path):
         rating = (row.get("Rating") or "").strip()
         if rating in ("", "0"):
             continue
-        # RYM rates 1-10; prefer the romanized artist name when present.
-        # RYM escapes HTML entities in the name and title columns (`&amp;`,
-        # `&#34;`), so they are decoded here; stored text is the text a page shows.
-        first = html.unescape(row["First Name localized"] or row["First Name"])
-        last = html.unescape(row["Last Name localized"] or row["Last Name"])
-        creator = f"{first} {last}" if first and last else (last or first)
+        # RYM rates 1-10. It stores each artist twice: `First/Last Name` in the
+        # artist's own script and `First/Last Name localized` in RYM's Latin
+        # form. The Latin form stays the card's primary name; the original is
+        # kept so the credit line can show both. RYM escapes HTML entities
+        # (`&amp;`, `&#34;`) in name and title columns; stored text is the text
+        # a page shows.
+        original = _creator_name(row["First Name"], row["Last Name"])
+        creator = _creator_name(
+            row["First Name localized"] or row["First Name"],
+            row["Last Name localized"] or row["Last Name"],
+        )
         release_year = row["Release_Date"].strip()[:4]
         items.append(
             Item(
@@ -111,6 +122,7 @@ def _parse_rym(path: Path) -> list[Item]:
                 source_id=row["RYM Album"],
                 title=html.unescape(row["Title"]),
                 creator=creator,
+                creator_original="" if original == creator else original,
                 year=int(release_year) if release_year.isdigit() else None,
                 rating=int(rating) / 2,
                 rating_native=f"{rating}/10",

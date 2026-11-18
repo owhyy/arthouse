@@ -121,10 +121,10 @@
                 <span class="truncate font-medium">{{ item.title }}</span>
                 <span class="shrink-0 text-sm font-medium text-accent">{{ item.score }}/10</span>
               </div>
-              {% set credit = item.creator or item_credits.get(item.source_id, "") %}
-              <p class="mt-1 truncate text-sm text-muted">
-                {% if credit %}{{ credit }}{% endif %}
-                {% if item.year %}{% if credit %} · {% endif %}{{ item.year }}{% endif %}
+              {% set credit = item.creator_display or item_credits.get(item.source_id, "") %}
+              {% set credit_line = credit ~ (" · " if credit and item.year else "") ~ (item.year if item.year else "") %}
+              <p class="mt-1 truncate text-sm text-muted"{% if credit_line %} title="{{ credit_line }}"{% endif %}>
+                {% if credit_line %}{{ credit_line }}{% endif %}
               </p>
               {% if item_genres %}
                 {% set tags = item_genres.get(item.source_id, []) %}

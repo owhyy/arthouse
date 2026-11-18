@@ -38,18 +38,31 @@ MUSIC_PROVIDER = "musicbrainz"
 log = logging.getLogger("arthouse.enrich_music")
 
 
-def _positive_names(entries: Sequence[Tag | Genre]) -> list[str]:
-    """Names the community has voted up, deduped, in payload order."""
-    return list(dict.fromkeys(entry["name"] for entry in entries if entry["count"] > 0))
+@dataclass(frozen=True)
+class TagRow:
+    """One raw descriptor label and the provider's vote tally for it."""
+
+    name: str
+    count: int
 
 
-def _positive_genres(entries: Sequence[Tag | Genre]) -> list[GenreRow]:
-    """Voted-up genres with their tallies, deduped by name, best vote kept."""
+def _voted_counts(entries: Sequence[Tag | Genre]) -> dict[str, int]:
+    """Positive vote tallies by label, deduped keeping the best count."""
     best: dict[str, int] = {}
     for entry in entries:
         if entry["count"] > 0:
             best[entry["name"]] = max(best.get(entry["name"], 0), entry["count"])
-    return [GenreRow(name, count) for name, count in best.items()]
+    return best
+
+
+def _positive_tags(entries: Sequence[Tag | Genre]) -> list[TagRow]:
+    """Voted-up tag labels with their tallies, deduped by name, best vote kept."""
+    return [TagRow(name, count) for name, count in _voted_counts(entries).items()]
+
+
+def _positive_genres(entries: Sequence[Tag | Genre]) -> list[GenreRow]:
+    """Voted-up genres with their tallies, deduped by name, best vote kept."""
+    return [GenreRow(name, count) for name, count in _voted_counts(entries).items()]
 
 
 def album_genres(group: ReleaseGroup) -> list[GenreRow]:
@@ -57,9 +70,9 @@ def album_genres(group: ReleaseGroup) -> list[GenreRow]:
     return _positive_genres(group.get("genres", []))
 
 
-def album_descriptors(group: ReleaseGroup) -> list[str]:
-    """Community tags for the album itself; the descriptor source."""
-    return _positive_names(group.get("tags", []))
+def album_descriptors(group: ReleaseGroup) -> list[TagRow]:
+    """Community tags for the album itself, with their tallies; descriptor input."""
+    return _positive_tags(group.get("tags", []))
 
 
 def _add_genres(db: Session, item: Item, genres: Sequence[GenreRow]) -> None:
@@ -76,15 +89,16 @@ def _add_genres(db: Session, item: Item, genres: Sequence[GenreRow]) -> None:
         )
 
 
-def _add_tags(db: Session, item: Item, names: list[str]) -> None:
-    """Add raw descriptor labels; names are already deduped and vote-filtered."""
-    for name in names:
+def _add_tags(db: Session, item: Item, tags: Sequence[TagRow]) -> None:
+    """Add raw descriptor labels; tags are already deduped and vote-filtered."""
+    for tag in tags:
         db.add(
             ItemTag(
                 source=item.source,
                 source_id=item.source_id,
                 provider=MUSIC_PROVIDER,
-                tag=name,
+                tag=tag.name,
+                count=tag.count,
             )
         )
 

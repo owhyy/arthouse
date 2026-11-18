@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, Request
 
 from arthouse.deps import DbSession, templates
-from arthouse.library import MEDIA_LABELS, MEDIA_ORDER, split_genres
+from arthouse.library import MEDIA_LABELS, MEDIA_ORDER, primary_genres, split_genres
 from arthouse.models import GenreRow, ItemMeta
 from arthouse.queries import (
     count_items,
@@ -120,7 +120,12 @@ async def library(
             "page_count": page_count,
             "items": items,
             "item_credits": query_item_credits(db, tab),
-            "item_genres": query_item_genres(db, tab, [item.source_id for item in items]),
+            "item_genres": {
+                source_id: primary_genres(genres)
+                for source_id, genres in query_item_genres(
+                    db, tab, [item.source_id for item in items]
+                ).items()
+            },
             "total": sum(counts.values()),
         },
     )

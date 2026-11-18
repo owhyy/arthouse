@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from sqlalchemy import Select, and_, exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from arthouse.models import GenreRow, Item, ItemDescriptor, ItemGenre, ItemMeta
+from arthouse.models import DescriptorRow, GenreRow, Item, ItemDescriptor, ItemGenre, ItemMeta
 from arthouse.vocab import FACETS, Facet, facet_of
 
 
@@ -142,21 +142,29 @@ def query_descriptor_options(
 
 def query_item_descriptor_groups(
     db: Session, source: str, source_id: str
-) -> list[tuple[Facet, list[str]]]:
-    """Descriptors for one item, grouped by facet in vocabulary order."""
-    names = db.scalars(
-        select(ItemDescriptor.name).where(
+) -> list[tuple[Facet, list[DescriptorRow]]]:
+    """Descriptors for one item, grouped by facet in vocabulary order.
+
+    Within a facet the best-supported descriptors lead; providers without vote
+    tallies all count zero, which falls through to the alphabetical order.
+    """
+    rows = db.execute(
+        select(ItemDescriptor.name, ItemDescriptor.count).where(
             ItemDescriptor.source == source,
             ItemDescriptor.source_id == source_id,
         )
     ).all()
-    groups: dict[Facet, list[str]] = {}
-    for name in names:
+    groups: dict[Facet, list[DescriptorRow]] = {}
+    for name, count in rows:
         facet = facet_of(name)
         if facet is None:
             continue
-        groups.setdefault(facet, []).append(name)
-    return [(facet, sorted(groups[facet])) for facet in FACETS if facet in groups]
+        groups.setdefault(facet, []).append(DescriptorRow(name, count))
+    return [
+        (facet, sorted(groups[facet], key=lambda row: (-row.count, row.name)))
+        for facet in FACETS
+        if facet in groups
+    ]
 
 
 def query_item(db: Session, item_id: int) -> Item | None:

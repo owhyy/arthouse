@@ -48,7 +48,7 @@ def rebuild_descriptors(engine: Engine) -> TaggingStats:
         conn.execute(text("DROP TABLE IF EXISTS descriptor"))
     create_schema(engine)
 
-    pairs: set[tuple[str, str, str]] = set()
+    pairs: Counter[tuple[str, str, str]] = Counter()
     owners: set[tuple[str, str]] = set()
     facets: Counter[Facet] = Counter()
     media: dict[str, tuple[int, int]] = {}
@@ -62,6 +62,7 @@ def rebuild_descriptors(engine: Engine) -> TaggingStats:
                 ItemTag.source,
                 ItemTag.source_id,
                 ItemTag.tag,
+                ItemTag.count,
             ).join(
                 Item,
                 and_(
@@ -73,7 +74,7 @@ def rebuild_descriptors(engine: Engine) -> TaggingStats:
 
         seen: Counter[str] = Counter()
         hit: Counter[str] = Counter()
-        for media_type, source, source_id, tag in rows:
+        for media_type, source, source_id, tag, tag_count in rows:
             considered += 1
             seen[media_type] += 1
             descriptor = lookup(tag)
@@ -83,13 +84,13 @@ def rebuild_descriptors(engine: Engine) -> TaggingStats:
             mapped_rows += 1
             hit[media_type] += 1
             facets[descriptor.facet] += 1
-            pairs.add((source, source_id, descriptor.name))
+            pairs[(source, source_id, descriptor.name)] += tag_count
             owners.add((source, source_id))
         media = {name: (seen[name], hit[name]) for name in seen}
 
         db.add_all(
-            ItemDescriptor(source=source, source_id=source_id, name=name)
-            for source, source_id, name in sorted(pairs)
+            ItemDescriptor(source=source, source_id=source_id, name=name, count=count)
+            for (source, source_id, name), count in sorted(pairs.items())
         )
         db.commit()
 

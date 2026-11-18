@@ -21,6 +21,29 @@ class GenreRow:
     count: int
 
 
+DESCRIPTOR_CONFIDENCE_STRONG = 3
+DESCRIPTOR_CONFIDENCE_MODERATE = 2
+
+
+@dataclass(frozen=True)
+class DescriptorRow:
+    """One descriptor on an item and the community support behind it."""
+
+    name: str
+    count: int
+
+    @property
+    def confidence(self) -> str | None:
+        """Display tier for the tally; None when the provider publishes no votes."""
+        if self.count >= DESCRIPTOR_CONFIDENCE_STRONG:
+            return "strong"
+        if self.count >= DESCRIPTOR_CONFIDENCE_MODERATE:
+            return "moderate"
+        if self.count > 0:
+            return "weak"
+        return None
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -149,7 +172,9 @@ class ItemTag(Base):
     Genres live in `item_genre`; this table holds only labels that the closed
     vocabulary may map (TMDB keywords, MusicBrainz tags, OpenLibrary subjects).
     The provider's own word for them is deliberately not stored. Raw tags stay
-    the source of truth for the derived descriptors.
+    the source of truth for the derived descriptors. `count` is the provider's
+    vote tally for the label; providers without votes (TMDB, OpenLibrary) leave
+    it at zero, and the UI shows no confidence marker for those.
     """
 
     __tablename__: str = "item_tag"
@@ -158,6 +183,7 @@ class ItemTag(Base):
     source_id: Mapped[str] = mapped_column(primary_key=True)
     provider: Mapped[str] = mapped_column(primary_key=True)
     tag: Mapped[str] = mapped_column(primary_key=True)
+    count: Mapped[int] = mapped_column(default=0)
 
 
 class ItemDescriptor(Base):
@@ -175,3 +201,4 @@ class ItemDescriptor(Base):
     source: Mapped[str] = mapped_column(primary_key=True)
     source_id: Mapped[str] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(primary_key=True)
+    count: Mapped[int] = mapped_column(default=0)

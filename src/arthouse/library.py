@@ -25,6 +25,8 @@ MEDIA_LABELS = {"music": "Music", "film": "Films", "book": "Books"}
 PRIMARY_GENRE_RATIO = 0.4
 PRIMARY_GENRE_MIN_COUNT = 2
 PRIMARY_GENRE_MAX = 4
+# Only the next few best-voted genres are worth showing under "More genres":
+SECONDARY_GENRE_MAX = 3
 
 
 def _fold_latin_accent(char: str) -> str:
@@ -225,9 +227,11 @@ def split_genres(genres: Sequence[GenreRow]) -> tuple[list[GenreRow], list[Genre
     Input must be in rank order. A genre is primary when its tally is at least
     `PRIMARY_GENRE_RATIO` of the top genre's and it has at least
     `PRIMARY_GENRE_MIN_COUNT` votes, capped at `PRIMARY_GENRE_MAX` so a cluster
-    of equally-voted sub-genres cannot take over the header. Providers without
-    votes leave every count at zero, which falls through to "all primary" and
-    keeps their display unchanged.
+    of equally-voted sub-genres cannot take over the header. The remaining
+    genres are capped at `SECONDARY_GENRE_MAX`, because past the next few the
+    provider's tail is mostly noise. Providers without votes leave every count
+    at zero, which falls through to "all primary" and keeps their display
+    unchanged.
     """
     if not genres:
         return [], []
@@ -237,4 +241,10 @@ def split_genres(genres: Sequence[GenreRow]) -> tuple[list[GenreRow], list[Genre
     cut = max(PRIMARY_GENRE_MIN_COUNT, math.ceil(top * PRIMARY_GENRE_RATIO))
     # Ranked input makes the qualifying genres a prefix, so the cap can slice.
     primary = [genre for genre in genres if genre.count >= cut][:PRIMARY_GENRE_MAX]
-    return primary, list(genres[len(primary) :])
+    secondary = list(genres[len(primary) :])[:SECONDARY_GENRE_MAX]
+    return primary, secondary
+
+
+def primary_genres(genres: Sequence[GenreRow]) -> list[GenreRow]:
+    """The main genres of one item; the card grid shows only these."""
+    return split_genres(genres)[0]

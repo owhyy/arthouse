@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from arthouse.enrich_music import (
     MusicEnrichment,
+    TagRow,
     album_descriptors,
     album_genres,
     enrich_music,
@@ -99,7 +100,7 @@ def test_album_mapping_keeps_genres_and_descriptors_separate() -> None:
         tags=_tags(("melancholy", 5), ("melancholy", 2), ("rejected tag", -1)),
     )
     assert album_genres(group) == [GenreRow("art pop", 3)]
-    assert album_descriptors(group) == ["melancholy"]
+    assert album_descriptors(group) == [TagRow("melancholy", 5)]
 
 
 def test_matched_album_writes_meta_and_album_rows(library_db: Engine) -> None:
@@ -127,7 +128,7 @@ def test_matched_album_writes_meta_and_album_rows(library_db: Engine) -> None:
     with Session(library_db) as db:
         meta = db.get(ItemMeta, ("rateyourmusic", "1"))
         genres = {(row.genre, row.count) for row in db.scalars(select(ItemGenre))}
-        tags = {row.tag for row in db.scalars(select(ItemTag))}
+        tags = {(row.tag, row.count) for row in db.scalars(select(ItemTag))}
         found = query_item_meta(db, "rateyourmusic", "1")
     assert found is not None
     assert found[1] == [GenreRow("art pop", 3)]
@@ -140,7 +141,7 @@ def test_matched_album_writes_meta_and_album_rows(library_db: Engine) -> None:
     assert meta.matched_title == "Fixture Album"
     assert meta.matched_year == 2018
     assert genres == {("art pop", 3)}
-    assert tags == {"melancholy"}
+    assert tags == {("melancholy", 5)}
 
 
 def test_album_without_genres_stays_empty(library_db: Engine) -> None:
@@ -165,7 +166,7 @@ def test_album_without_genres_stays_empty(library_db: Engine) -> None:
     assert client.detail_calls == ["mbid-2"]
     with Session(library_db) as db:
         assert list(db.scalars(select(ItemGenre))) == []
-        assert {row.tag for row in db.scalars(select(ItemTag))} == {"melancholy"}
+        assert {(row.tag, row.count) for row in db.scalars(select(ItemTag))} == {("melancholy", 5)}
         found = query_item_meta(db, "rateyourmusic", "1")
         grid = query_item_genres(db, "music")
     assert found is not None

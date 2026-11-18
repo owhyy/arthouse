@@ -8,23 +8,34 @@ from typing import cast
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import Engine, create_engine, inspect, text
+from sqlalchemy import Engine, create_engine, inspect, select, text
 from sqlalchemy.orm import Session
 
 from arthouse.db import create_db_engine
 from arthouse.deps import get_db
 from arthouse.library import build_db, normalize_title, split_genres
-from arthouse.models import Base, GenreRow, ItemGenre, ItemMeta, ItemTag
+from arthouse.models import (
+    DESCRIPTOR_CONFIDENCE_MODERATE,
+    DESCRIPTOR_CONFIDENCE_STRONG,
+    Base,
+    DescriptorRow,
+    GenreRow,
+    ItemGenre,
+    ItemMeta,
+    ItemTag,
+)
 from arthouse.queries import (
     count_items,
     count_items_by_media,
     query_item,
     query_item_credits,
+    query_item_descriptor_groups,
     query_item_genres,
     query_items,
 )
 from arthouse.routes import pages
 from arthouse.tagging import rebuild_descriptors
+from arthouse.vocab import Facet
 
 
 def _enrich_film(
@@ -446,7 +457,10 @@ async def test_music_detail_page_splits_primary_and_secondary_genres(
             ("folk rock", 7),
             ("pop rock", 7),
             ("pop", 6),
-            ("beat music", 1),
+            ("beat music", 5),
+            ("british rhythm & blues", 3),
+            ("psychedelic pop", 2),
+            ("ambient", 1),
         ],
     )
     with Session(library_db) as db:
@@ -458,14 +472,17 @@ async def test_music_detail_page_splits_primary_and_secondary_genres(
         _clear_override(test_app)
     assert response.status_code == 200
     assert "More genres" in response.text
-    # The voted head comes before the tail, and the tail is still shown.
+    # The voted head comes before the tail, and the tail stops after three.
     assert response.text.index("pop rock") < response.text.index("More genres")
     assert response.text.index("More genres") < response.text.index("beat music")
     # The tally only ranks the genres; it is never shown, and "votes" is jargon.
+    assert "british rhythm &amp; blues" in response.text
+    assert "psychedelic pop" not in response.text
+    assert "ambient" not in response.text
     assert "votes" not in response.text
 
 
-async def test_music_grid_ranks_genres_and_fades_the_overflow(
+async def test_music_grid_shows_only_the_primary_genres(
     client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
 ) -> None:
     _add_music_genres(
@@ -479,8 +496,27 @@ async def test_music_grid_ranks_genres_and_fades_the_overflow(
         _clear_override(test_app)
     assert response.status_code == 200
     assert "genre-strip" in response.text
-    # The strip clips, so the title carries the full list in rank order.
-    assert 'title="rock, folk rock, pop, beat music"' in response.text
+    # Cards carry the primary set only; the cut tail never reaches the grid.
+    assert 'title="rock, folk rock"' in response.text
+    assert "beat music" not in response.text
+
+
+async def test_film_grid_keeps_every_genre_without_votes(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    _enrich_film(
+        library_db,
+        "https://boxd.it/aaa",
+        "A.",
+        ["Drama", "Fantasy", "Science Fiction", "Mystery", "Romance"],
+    )
+    _override_db(test_app, library_db)
+    try:
+        response = await client.get("/library?tab=film")
+    finally:
+        _clear_override(test_app)
+    assert response.status_code == 200
+    assert 'title="Drama, Fantasy, Mystery, Romance, Science Fiction"' in response.text
 
 
 async def test_music_card_shows_the_artist_name_in_both_scripts(
@@ -544,6 +580,13 @@ def test_split_genres_keeps_the_voted_head_as_primary() -> None:
         [GenreRow("rock", 17), GenreRow("folk rock", 7), GenreRow("pop rock", 7)],
         [GenreRow("pop", 6), GenreRow("beat music", 1)],
     )
+
+
+def test_split_genres_caps_the_secondary_tail() -> None:
+    genres = [GenreRow("rock", 20), *(GenreRow(f"g{index}", 5) for index in range(5))]
+    primary, secondary = split_genres(genres)
+    assert primary == [GenreRow("rock", 20)]
+    assert secondary == [GenreRow("g0", 5), GenreRow("g1", 5), GenreRow("g2", 5)]
 
 
 def test_split_genres_keeps_everything_without_votes() -> None:
@@ -758,6 +801,175 @@ def test_genres_never_feed_the_vocabulary(library_db: Engine) -> None:
 def test_build_db_tolerates_missing_data_dir(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'library.db'}")
     assert build_db(engine, tmp_path / "nope") == 0
+
+
+def test_descriptor_votes_sum_across_aliases(library_db: Engine) -> None:
+    """Aliases of one descriptor each carry independent community support."""
+    with Session(library_db) as db:
+        db.add_all(
+            [
+                ItemTag(
+                    source="letterboxd",
+                    source_id="https://boxd.it/aaa",
+                    provider="tmdb",
+                    tag="melancholy",
+                    count=2,
+                ),
+                ItemTag(
+                    source="letterboxd",
+                    source_id="https://boxd.it/aaa",
+                    provider="tmdb",
+                    tag="sad",
+                    count=4,
+                ),
+                ItemTag(
+                    source="letterboxd",
+                    source_id="https://boxd.it/aaa",
+                    provider="tmdb",
+                    tag="neo-noir",
+                    count=1,
+                ),
+            ]
+        )
+        db.commit()
+
+    rebuild_descriptors(library_db)
+
+    with Session(library_db) as db:
+        groups = dict(query_item_descriptor_groups(db, "letterboxd", "https://boxd.it/aaa"))
+    assert groups[Facet.MOOD] == [DescriptorRow("melancholic", 6)]
+    assert groups[Facet.ATMOSPHERE] == [DescriptorRow("dark", 1)]
+
+
+def test_descriptor_votes_order_the_chips(library_db: Engine) -> None:
+    with Session(library_db) as db:
+        db.add_all(
+            [
+                ItemTag(
+                    source="letterboxd",
+                    source_id="https://boxd.it/aaa",
+                    provider="tmdb",
+                    tag="melancholy",
+                    count=1,
+                ),
+                ItemTag(
+                    source="letterboxd",
+                    source_id="https://boxd.it/aaa",
+                    provider="tmdb",
+                    tag="uplifting",
+                    count=5,
+                ),
+            ]
+        )
+        db.commit()
+
+    rebuild_descriptors(library_db)
+
+    with Session(library_db) as db:
+        groups = dict(query_item_descriptor_groups(db, "letterboxd", "https://boxd.it/aaa"))
+    # Best-supported first inside a facet.
+    assert groups[Facet.MOOD] == [DescriptorRow("uplifting", 5), DescriptorRow("melancholic", 1)]
+
+
+def test_keywords_without_votes_stay_alphabetical(library_db: Engine) -> None:
+    _enrich_film(
+        library_db,
+        "https://boxd.it/aaa",
+        "A.",
+        ["Drama"],
+        keywords=["neo-noir", "melancholy", "uplifting"],
+    )
+
+    with Session(library_db) as db:
+        groups = dict(query_item_descriptor_groups(db, "letterboxd", "https://boxd.it/aaa"))
+        stored = {row.tag: row.count for row in db.scalars(select(ItemTag))}
+    assert stored == {"neo-noir": 0, "melancholy": 0, "uplifting": 0}
+    # Zero votes tie on count, so the name breaks the tie.
+    assert groups[Facet.MOOD] == [
+        DescriptorRow("melancholic", 0),
+        DescriptorRow("uplifting", 0),
+    ]
+    assert groups[Facet.ATMOSPHERE] == [DescriptorRow("dark", 0)]
+
+
+@pytest.mark.parametrize(
+    ("count", "confidence"),
+    [
+        (0, None),
+        (1, "weak"),
+        (DESCRIPTOR_CONFIDENCE_MODERATE, "moderate"),
+        (DESCRIPTOR_CONFIDENCE_STRONG, "strong"),
+        (25, "strong"),
+    ],
+)
+def test_descriptor_confidence_tiers(count: int, confidence: str | None) -> None:
+    assert DescriptorRow("melancholic", count).confidence == confidence
+
+
+async def test_detail_page_weights_vote_backed_descriptors(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    with Session(library_db) as db:
+        db.add_all(
+            [
+                ItemTag(
+                    source="rateyourmusic",
+                    source_id="1",
+                    provider="musicbrainz",
+                    tag="melancholy",
+                    count=4,
+                ),
+                ItemTag(
+                    source="rateyourmusic",
+                    source_id="1",
+                    provider="musicbrainz",
+                    tag="nocturnal",
+                    count=1,
+                ),
+            ]
+        )
+        db.commit()
+    rebuild_descriptors(library_db)
+    with Session(library_db) as db:
+        album = next(i for i in query_items(db) if i.title == "Fixture Album")
+    _override_db(test_app, library_db)
+    try:
+        response = await client.get(f"/library/{album.id}")
+    finally:
+        _clear_override(test_app)
+    assert response.status_code == 200
+    assert re.search(
+        r'<a href="[^"]*descriptor=melancholic[^"]*"\s+class="[^"]*font-semibold',
+        response.text,
+    )
+    assert 'title="melancholic — strong confidence"' in response.text
+    # A single vote stays muted but still explains itself on hover.
+    weak_link = re.search(
+        r'<a href="[^"]*descriptor=night[^"]*"[^>]*>night</a>',
+        response.text,
+    )
+    assert weak_link is not None
+    assert "text-muted" in weak_link.group(0)
+    assert 'title="night — weak confidence"' in weak_link.group(0)
+
+
+async def test_detail_page_leaves_unvoted_descriptors_plain(
+    client: httpx.AsyncClient, library_db: Engine, test_app: FastAPI
+) -> None:
+    _enrich_film(library_db, "https://boxd.it/aaa", "A.", ["Drama"], keywords=["neo-noir"])
+    with Session(library_db) as db:
+        film = next(i for i in query_items(db) if i.title == "Fixture Film A")
+    _override_db(test_app, library_db)
+    try:
+        response = await client.get(f"/library/{film.id}")
+    finally:
+        _clear_override(test_app)
+    assert response.status_code == 200
+    assert re.search(
+        r'<a href="[^"]*descriptor=dark[^"]*"\s+class="[^"]*text-muted[^"]*"[^>]*>dark</a>',
+        response.text,
+    )
+    assert 'title="dark' not in response.text
 
 
 def test_library_tables_have_the_scale_indexes(library_db: Engine) -> None:

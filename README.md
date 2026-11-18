@@ -28,12 +28,11 @@ rating, the platform it came from, and your review when the export has one
 (Letterboxd `reviews.csv`, RYM `Review`, Goodreads `My Review`; HTML is
 stripped and paragraphs preserved). Enriched items also show provider genres on
 cards and the detail page. MusicBrainz genres carry a vote tally, so they are
-ranked by it: the detail page marks the best-voted ones as primary and puts the
-rest under "More genres", while a card keeps a single ranked line and fades
-whatever does not fit. The tally does the sorting only — it is never displayed.
-TMDB genres have no votes and render as they always have.
-When an album has no genres of its own and the artist's are borrowed instead, the
-detail page notes that they may not be accurate.
+ranked by it: the best-voted ones are primary, the next three sit under
+"More genres", and the rest of the tail is dropped. Cards show only the primary
+genres, on one line that fades if it overflows. The tally does the sorting only
+— it is never displayed. TMDB genres have no votes, so every genre counts as
+primary and films render as they always have.
 Films also show the TMDB synopsis and faceted descriptors (detail page only),
 and the director in the same credit line where books show the author and music
 the artist. An album whose artist uses another script leads with that name and
@@ -103,8 +102,9 @@ The enrichment schema is shared by every medium: `item_meta` stores
 provider-neutral fields (`provider`, `external_id`, `summary`, `credit`,
 `tags_fetched`), `item_miss` records lookups that found no match so
 they are not retried on every run, `item_genre` stores display genres, `item_tag`
-stores raw descriptor labels from any provider, and `item_descriptor` holds the
-descriptors those labels map onto.
+stores raw descriptor labels from any provider (with `count`, the provider's vote
+tally), and `item_descriptor` holds the descriptors those labels map onto together
+with the summed tallies.
 
 ### Music enrichment (MusicBrainz)
 
@@ -200,6 +200,25 @@ vocabulary, so there is no second copy to drift. Derived tables are regenerable,
 so a schema change is handled by rebuilding rather than migrating: `create_all`
 never alters an existing table, so delete `data/library.db`, let the app rebuild
 it from the exports, and re-run the enrichment passes.
+
+### Descriptor confidence
+
+MusicBrainz tags carry a community vote tally, and `item_tag.count` keeps it.
+`rebuild_descriptors` sums the tallies of every raw tag that maps to a
+descriptor, so two aliases of the same concept add their support, and stores the
+total on `item_descriptor.count`. On the detail page a descriptor chip is then
+weighted by that total: **strong** (three or more votes) is semibold, **moderate**
+(two) is regular but full-strength ink, and **weak** (one) stays muted like the
+rest. Hovering a vote-backed chip names its tier, e.g. `melancholic — strong
+confidence`; the tally itself stays in the database and the enrichment reports.
+
+TMDB keywords and OpenLibrary subjects publish no vote counts, so their tags
+stay at zero and their chips render exactly as before, with no marker and no
+tooltip. The thresholds are measured, not guessed: a probe of 25 random library
+albums found 98 mapped descriptors, 60% with one vote, 12% with two, and 27%
+with three or more, so a cut at five would have marked almost nothing strong.
+Counts are only as fresh as the enrichment pass: a matched album is never
+re-fetched, so drop `data/library.db` and re-run the passes to pick this up.
 
 ### Collaborative similarity (MovieLens)
 
